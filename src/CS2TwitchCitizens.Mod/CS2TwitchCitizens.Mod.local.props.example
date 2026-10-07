@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <CS2ManagedDir Condition="'$(CS2ManagedDir)' == ''">C:\path\to\Cities2_Data\Managed</CS2ManagedDir>
+  </PropertyGroup>
+</Project>

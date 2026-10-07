@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="CS2TwitchCitizens.Mod.local.props" Condition="Exists('CS2TwitchCitizens.Mod.local.props')" />
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
+  </PropertyGroup>
+  <Target Name="RequireGameAssemblies" BeforeTargets="ResolveReferences" Condition="'$(CS2ManagedDir)' == '' or !Exists('$(CS2ManagedDir)/Game.dll')">
+    <Error Text="Set CS2ManagedDir to the game's Cities2_Data/Managed directory containing Game.dll." />
+  </Target>
+  <ItemGroup>
+    <Reference Include="Game"><HintPath>$(CS2ManagedDir)/Game.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Entities"><HintPath>$(CS2ManagedDir)/Unity.Entities.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Collections"><HintPath>$(CS2ManagedDir)/Unity.Collections.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.Mathematics"><HintPath>$(CS2ManagedDir)/Unity.Mathematics.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(CS2ManagedDir)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Core"><HintPath>$(CS2ManagedDir)/Colossal.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Logging"><HintPath>$(CS2ManagedDir)/Colossal.Logging.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>
