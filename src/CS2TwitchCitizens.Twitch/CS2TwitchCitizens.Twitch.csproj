@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net48;net8.0</TargetFrameworks>
+    <Version>0.3.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
+    <Reference Include="System.Net.Http" Condition="'$(TargetFramework)' == 'net48'" />
+    <Reference Include="System.Runtime.Serialization" Condition="'$(TargetFramework)' == 'net48'" />
+  </ItemGroup>
+</Project>

@@ -37,7 +37,7 @@ namespace CS2TwitchCitizens.Mod
                 return;
 
 #if DEBUG
-            if (!_devSequenceEnqueued)
+            if (!Mod.TwitchEnabled && !_devSequenceEnqueued)
             {
                 _devSequenceEnqueued = true;
                 DevCommandInjector.EnqueueSampleSequence(queue, DateTimeOffset.UtcNow);

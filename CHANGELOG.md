@@ -1,12 +1,19 @@
 # Changelog
 
+## 0.3.0 — real Twitch chat command source
+
+- Added a framework-independent EventSub WebSocket client for one `channel.chat.message` subscription, using `ClientWebSocket`, `HttpClient`, and built-in JSON serialization. It validates a user access token, creates the subscription, handles Twitch reconnect and ordinary disconnect, deduplicates relevant EventSub message IDs, and uses bounded reconnect delays.
+- Added ignored local Twitch configuration and a credential-free example. The service starts only with enabled, complete config and stops through cancellation when the mod is disposed. Network code sends parsed `!join` and `!me` into the existing concurrent queue; `CitizenBindingSystem` retains all ECS and binding work.
+- Preserved the Debug DEV injector for disabled Twitch config and retained the existing command and binding checks. Added offline checks for Twitch payload parsing, identity fields, queue handoff, deduplication, and reconnect URL/delay rules.
+- Official Code Mod build, Entities post-processing, Burst and local deployment passed with zero warnings/errors. Real Twitch connectivity and command delivery await a user runtime test with credentials.
+
 ## 0.2.0 — DEV Viewer → Citizen Binding
 
 - Built `CS2TwitchCitizens.Commands` for both `net48` and `net8.0` and referenced its `net48` assembly from the game-facing mod; parser, receiver, and concurrent queue are shared rather than duplicated.
 - Added a session-only `ViewerBindingRegistry<TKey>` that prevents duplicate viewer bindings and shared Citizen keys, and reports missing or stale bindings without automatic reassignment.
 - Added `CitizenBindingSystem` in `GameSimulation`. Its one-time Debug-only DEV `!join → !me → !join` sequence uses the existing injector, parser and queue; commands are consumed on the ECS update thread. It selects an existing living Adult Citizen when available, without requiring home or work or modifying the entity.
 - Added command-layer checks for join rules, stale detection and bounded queue processing. The existing parser/DEV/concurrent-queue checks still pass.
-- Official Code Mod build, `ModPostProcessor`, Burst and `DeployWIP` passed with zero warnings/errors. The deployed package includes the mod and its Commands dependency, with no game assemblies. The new binding path still awaits a real in-game runtime test.
+- Official Code Mod build, `ModPostProcessor`, Burst and `DeployWIP` passed with zero warnings/errors. The deployed package includes the mod and its Commands dependency, with no game assemblies. The later in-game test confirmed DEV `!join`, `!me`, and repeated join against a real Citizen.
 
 ## 0.1.0 — foundation in progress
 

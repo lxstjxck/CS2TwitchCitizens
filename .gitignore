@@ -4,3 +4,4 @@ obj/
 .dotnet-home/
 *.local.props
 Library/
+twitch.config.json

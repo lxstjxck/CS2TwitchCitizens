@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
+    <ProjectReference Include="../../src/CS2TwitchCitizens.Twitch/CS2TwitchCitizens.Twitch.csproj" />
   </ItemGroup>
 </Project>
