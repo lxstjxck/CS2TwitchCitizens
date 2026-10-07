@@ -8,7 +8,7 @@ using Unity.Entities;
 namespace CS2TwitchCitizens.Mod
 {
     /// <summary>Read-only snapshot of at most five citizens every 1,024 updates.</summary>
-    public sealed class CitizenDiscoverySystem : GameSystemBase
+    public sealed partial class CitizenDiscoverySystem : GameSystemBase
     {
         private const int ScanInterval = 1024;
         private const int SampleLimit = 5;

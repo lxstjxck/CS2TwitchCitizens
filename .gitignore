@@ -3,3 +3,4 @@ obj/
 .vs/
 .dotnet-home/
 *.local.props
+Library/

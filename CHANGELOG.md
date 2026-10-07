@@ -7,5 +7,6 @@
 - Added a separately buildable `CS2TwitchCitizens.Mod` with a verified `IMod` entry point and a read-only, rate-limited `CitizenDiscoverySystem`.
 - Kept game DLL references external through `CS2ManagedDir`; no game DLL is copied into the repository.
 - Moved the machine-specific `CS2ManagedDir` value to an ignored local `.props` file and added a shareable example, keeping IDE builds working without embedding a contributor's game path in the shared project.
-- Identified the installed official Code Mod template, confirmed `net48`, the local mods source, and mandatory post-processing. Local deployment is blocked by an incomplete Unity modding toolchain; no unprocessed DLL was installed.
+- Identified the installed official Code Mod template, confirmed `net48`, the local mods source, and mandatory post-processing. An earlier toolchain probe failed, and no unprocessed DLL was installed.
+- Imported the official Code Mod build targets, enabled the Entities source-generator pipeline, made `CitizenDiscoverySystem` partial for generated code, and completed official post-processing plus local deployment without bundling game assemblies.
 - Game loading and save/load identity behavior remain untested. No Twitch networking, Citizen mutation, or binding persistence has been added.
