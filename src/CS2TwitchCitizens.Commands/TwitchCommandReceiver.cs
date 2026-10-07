@@ -8,8 +8,8 @@ public static class TwitchCommandReceiver
 {
     public static int Drain(TwitchCommandQueue queue, int maximum, Action<TwitchCommand> receive)
     {
-        ArgumentNullException.ThrowIfNull(queue);
-        ArgumentNullException.ThrowIfNull(receive);
+        if (queue is null) throw new ArgumentNullException(nameof(queue));
+        if (receive is null) throw new ArgumentNullException(nameof(receive));
         if (maximum < 0) throw new ArgumentOutOfRangeException(nameof(maximum));
 
         var processed = 0;

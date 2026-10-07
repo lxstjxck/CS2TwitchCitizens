@@ -4,6 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
+    <Version>0.2.0</Version>
     <ManagedPath Condition="'$(ManagedPath)' == '' and '$(CS2ManagedDir)' != ''">$(CS2ManagedDir)</ManagedPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == '' and Exists('$(ManagedPath)/../Content/Game/.ModdingToolchain/Mod.props')">$(ManagedPath)/../Content/Game/.ModdingToolchain</CS2ToolPath>
@@ -17,6 +18,7 @@
     <Error Text="Set ManagedPath to the game's Cities2_Data/Managed directory containing Game.dll." />
   </Target>
   <ItemGroup>
+    <ProjectReference Include="../CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
     <Reference Include="Game"><HintPath>$(ManagedPath)/Game.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Entities"><HintPath>$(ManagedPath)/Unity.Entities.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Collections"><HintPath>$(ManagedPath)/Unity.Collections.dll</HintPath><Private>false</Private></Reference>
