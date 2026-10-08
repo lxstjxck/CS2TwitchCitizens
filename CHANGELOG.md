@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.0 — Persistent Viewer Bindings & Life History
+
+- Added city-save serialization to `CitizenBindingSystem` through the installed game's `IDefaultSerializable` system serializer. Format 1 writes Twitch user ID, login/display name, active Citizen through `IWriter.Write(Entity)`, and a versioned life history. OAuth credentials remain in local configuration and are never written to the save. Restored Entity references are validated after game deserialization; a missing old save section starts with an empty journal. Unknown or corrupt format blocks mod commands and saves rather than silently replacing history.
+- Added `ViewerLifeJournal` with unique LifeIds, one active Citizen per viewer, completed life snapshots, death/missing states, duplicate Citizen protection, and explicit new life creation on a later `!join`. A confirmed `HealthProblemFlags.Dead` ends a life; unresolved Entity loss becomes `Missing` and does not permit automatic reassignment. The check runs only for bound Citizens every ten seconds. City preload clears runtime bindings and queued commands; completion of restore also discards commands received during loading.
+- Added `!history` through the existing command queue and log, and projected life counts/status/history through plain UI DTOs without ECS entities. The panel shows a compact life count and status. Full history UI remains outside this version.
+- Pure life-state tests cover death, another life, Missing, duplicate claims, two viewers, model roundtrip, city isolation, version rejection, and `!history`; previous command/UI checks and TypeScript typecheck pass. The game binary save/load cycle and death detection still require a runtime test before persistence can be considered verified.
+
+## 0.5.2 — Camera Focus Fix
+
+- Split the camera actions. `Найти` now requests a one-time move through the game's `CameraController.pivot` and `zoom`, returns to the gameplay controller, and keeps the Citizen selected. `Следить` uses the installed game's orbit controller `Mode.Follow`; `Остановить слежение` restores the gameplay controller. Twitch command delivery and `!find` are unchanged.
+- Replaced the unconditional `Focused` result with `CitizenNotFound`, `PositionUnavailable`, `CameraUnavailable`, `FocusRequested`, `FocusConfirmed`, `FocusFailed`, `FollowRequested`, and `FollowStopped`. The UI never claims continuous following from a one-time request. A later camera position check reports a movement confirmation or failure; visual correctness still requires an in-game test.
+- Added camera diagnostics for Citizen position, controller, camera position before/after, target, zoom, and result. Offline command checks, UI search check, TypeScript typecheck, official Code Mod build with `ModPostProcessor`/Burst/`DeployWIP`, and UI webpack build passed. The UI build retains the existing Sass loader warning.
+- The official postprocessor initially failed because the local user environment lacked `CSII_UNITYVERSION`. The installed `2022.3.62f2` editor was verified, that one local user variable was restored, and the unmodified official workflow then passed. Both local mod outputs were updated. Camera movement and follow behavior await a game restart and runtime inspection.
+
+## 0.5.1 — UI layout fix
+
+- Fixed the regression where clicking the top-right button showed no panel. The button and native `Panel` had both been appended to the compact `GameTopRight` hook; after v0.5.1 constrained the panel size, its nested `position: fixed` placement was unreliable in that UI context. The button remains in `GameTopRight`, while the panel now mounts at the game's `Game` hook with local absolute positioning. A shared local binding keeps their open state synchronized.
+- Added temporary UI console markers for button toggles and panel mounting. The panel still has a fixed 400 px width (360 px on narrower viewports) and a bounded viewer list, so the former unconstrained horizontal strips cannot recur from this layout. The changed UI passed its search check, TypeScript typecheck and official webpack build, and was redeployed locally. Visual behavior awaits a new game run.
+- Fixed the panel and viewer-list sizing. The v0.5.0 stylesheet used CSS `min()` for panel widths and list max-height; the installed Gameface runtime rejected those declarations in `Logs/UI.log`, leaving the native panel and scroll area unconstrained. The log then reported elements expanding to its 10,000,000-unit limit, matching the full-width dark strips observed in game.
+- Replaced those declarations with explicit 400 px panel width (360 px below 1500 px), bounded height and scroll area, plus local overflow and box sizing. The existing CSS Module still scopes every rule; no game-wide selectors or C#/Twitch behavior changed.
+- This patch changes only the UI module (`0.5.1`); the deployed Code Mod assemblies remain at `0.5.0` and do not require a rebuild.
+- UI search tests, TypeScript typecheck, existing C# checks and webpack build passed; the local UI module was redeployed. The build retains one Sass loader deprecation warning. The game must be restarted for a visual check of the new bundle.
+
+## 0.5.0 — In-Game UI
+
+- Added an official-template React/TypeScript UI module registered at the `GameTopRight` hook. Its compact panel has an open/close button, Twitch service status, channel ID, bound-viewer count, searchable scrollable list, selected Citizen card, and read-only connection settings.
+- Added `ViewerPanelUISystem` at `SystemUpdatePhase.UIUpdate`. It sends a plain JSON snapshot through `Colossal.UI.Binding.ValueBinding<string>` at most once per second and receives explicit `focusCitizen` triggers containing only a Twitch user ID. The existing `CitizenBindingSystem.FocusCitizen` performs validation and camera control. Chat `!find` still never moves the camera.
+- Exposed thread-safe Twitch connection states from the existing EventSub service: Connecting, Connected, Reconnecting, AuthenticationError, and Disconnected; Disabled is used when the service is not enabled. The UI receives the configured broadcaster ID, never the token or the whole config.
+- Added UI projection/serialization and safe action tests, plus a frontend search check. Existing command/Twitch tests still pass. The official Code Mod build, Entities generation, `ModPostProcessor`, Burst, and `DeployWIP` passed with 0 warnings/errors. The official UI webpack build passed with one Sass loader deprecation warning. Both outputs are installed locally; v0.5.0 UI appearance and camera action still require a game runtime test.
+
+## 0.4.0 — Citizen Identity, Find & Camera
+
+- Added `!find` to the Twitch command path. On the game thread it resolves the existing viewer binding, checks whether the Citizen still exists, and uses the game's position resolver. It logs `not joined`, `stale binding`, `position unavailable`, or the current Citizen and position. It never moves the camera or reassigns a binding.
+- After a successful `!join`, the mod captures the prior custom name or rendered label for diagnostics and calls `Game.UI.NameSystem.SetCustomName` once with the Twitch login. The Twitch user ID remains the binding key. The game serializes custom names independently of this mod's session-only registry, so a renamed Citizen can retain that name after a save/load even when the Twitch binding is gone.
+- Added an explicit game-thread `FocusCitizen(viewerId)` action using the public orbit-camera controller API, plus `GetAllBindings`, `GetViewerInfo`, and `FindCitizen` for a future UI. UI snapshots contain plain values and use Twitch user ID as their action key; they expose no ECS object.
+- Added offline checks for `!find`, missing/stale bindings, position failures, repeated finds, duplicate Citizen prevention, and DTO isolation. Official Entities generation, `ModPostProcessor`, Burst and `DeployWIP` completed with zero warnings/errors. The v0.4.0 name, find, and camera paths still require an in-game runtime test.
+
 ## 0.3.0 — real Twitch chat command source
 
 - Added a framework-independent EventSub WebSocket client for one `channel.chat.message` subscription, using `ClientWebSocket`, `HttpClient`, and built-in JSON serialization. It validates a user access token, creates the subscription, handles Twitch reconnect and ordinary disconnect, deduplicates relevant EventSub message IDs, and uses bounded reconnect delays.

@@ -35,13 +35,14 @@ ConcurrentQueue -> ECS
 - All Twitch connections must support reconnect.
 - Deduplicate Twitch EventSub message IDs.
 - Do not block the simulation thread with network requests.
+- Persist city bindings through the game's Entity-aware serializer; never use raw Entity Index/Version as cross-load identity.
 
 ## Versioning
 
 Use SemVer.
 
 Current target:
-0.3.0
+0.6.0
 
 Update CHANGELOG.md for every completed feature.
 

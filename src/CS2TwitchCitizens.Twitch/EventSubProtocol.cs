@@ -103,7 +103,7 @@ public static class EventSubProtocol
             eventData.ChatterUserLogin,
             eventData.ChatterUserName,
             receivedAt,
-            out command) || (command?.Command != "!join" && command?.Command != "!me"))
+            out command) || (command?.Command != "!join" && command?.Command != "!me" && command?.Command != "!find" && command?.Command != "!history"))
         {
             command = null;
             return false;

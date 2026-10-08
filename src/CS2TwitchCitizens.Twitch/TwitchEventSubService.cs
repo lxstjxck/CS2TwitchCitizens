@@ -27,6 +27,9 @@ public sealed class TwitchEventSubService : IDisposable
     private Task? _worker;
     private bool _disposed;
     private DateTimeOffset _validatedAt;
+    private volatile TwitchConnectionStatus _status = TwitchConnectionStatus.Disconnected;
+
+    public TwitchConnectionStatus Status => _status;
 
     public TwitchEventSubService(TwitchConfig config, TwitchCommandQueue queue, Action<string> log)
     {
@@ -41,6 +44,7 @@ public sealed class TwitchEventSubService : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(TwitchEventSubService));
         if (_worker != null) throw new InvalidOperationException("Twitch service already started.");
+        _status = TwitchConnectionStatus.Connecting;
         _worker = Task.Run(() => RunAsync(_stop.Token));
     }
 
@@ -58,10 +62,12 @@ public sealed class TwitchEventSubService : IDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+                _status = TwitchConnectionStatus.Disconnected;
                 return;
             }
             catch (AuthenticationException)
             {
+                _status = TwitchConnectionStatus.AuthenticationError;
                 return;
             }
             catch (Exception ex)
@@ -73,11 +79,13 @@ public sealed class TwitchEventSubService : IDisposable
             if (cancellationToken.IsCancellationRequested)
                 return;
             failures++;
+            _status = TwitchConnectionStatus.Reconnecting;
             var delay = EventSubRetryPolicy.Delay(failures);
             _log($"[CS2TwitchCitizens] Twitch reconnect in {delay.TotalSeconds:0}s");
             try { await Task.Delay(delay, cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
         }
+        _status = TwitchConnectionStatus.Disconnected;
     }
 
     private async Task ValidateTokenAsync(CancellationToken cancellationToken)
@@ -120,6 +128,7 @@ public sealed class TwitchEventSubService : IDisposable
                 throw new InvalidDataException("Twitch EventSub Welcome missing.");
             _log("[CS2TwitchCitizens] Twitch EventSub session established");
             await SubscribeAsync(welcome.Payload!.Session!.Id!, cancellationToken).ConfigureAwait(false);
+            _status = TwitchConnectionStatus.Connected;
             var keepalive = KeepaliveTimeout(welcome);
 
             while (!cancellationToken.IsCancellationRequested)
@@ -136,6 +145,7 @@ public sealed class TwitchEventSubService : IDisposable
                     if (!EventSubProtocol.TryGetReconnectUri(envelope, out var uri))
                         throw new InvalidDataException("Invalid Twitch reconnect URL.");
                     var replacement = await ConnectAsync(uri!, cancellationToken).ConfigureAwait(false);
+                    _status = TwitchConnectionStatus.Reconnecting;
                     var transferred = false;
                     try
                     {
@@ -147,6 +157,7 @@ public sealed class TwitchEventSubService : IDisposable
                         socket = replacement;
                         transferred = true;
                         _log("[CS2TwitchCitizens] Twitch EventSub session reconnected");
+                        _status = TwitchConnectionStatus.Connected;
                     }
                     finally
                     {
@@ -266,6 +277,7 @@ public sealed class TwitchEventSubService : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _status = TwitchConnectionStatus.Disconnected;
         _stop.Cancel();
         lock (_socketGate)
         {

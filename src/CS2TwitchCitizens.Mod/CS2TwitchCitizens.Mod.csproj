@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.6.0</Version>
     <ManagedPath Condition="'$(ManagedPath)' == '' and '$(CS2ManagedDir)' != ''">$(CS2ManagedDir)</ManagedPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == '' and Exists('$(ManagedPath)/../Content/Game/.ModdingToolchain/Mod.props')">$(ManagedPath)/../Content/Game/.ModdingToolchain</CS2ToolPath>
@@ -26,6 +26,8 @@
     <Reference Include="Unity.Mathematics"><HintPath>$(ManagedPath)/Unity.Mathematics.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedPath)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Colossal.Core"><HintPath>$(ManagedPath)/Colossal.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.Mathematics"><HintPath>$(ManagedPath)/Colossal.Mathematics.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Colossal.Logging"><HintPath>$(ManagedPath)/Colossal.Logging.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Colossal.UI.Binding"><HintPath>$(ManagedPath)/Colossal.UI.Binding.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
 </Project>

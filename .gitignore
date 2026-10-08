@@ -5,3 +5,5 @@ obj/
 *.local.props
 Library/
 twitch.config.json
+node_modules/
+.npm-cache/

@@ -21,7 +21,8 @@ public static class TwitchCommandParser
         var verb = separator < 0 ? input : input.Substring(0, separator);
         if (!verb.Equals("!join", StringComparison.OrdinalIgnoreCase) &&
             !verb.Equals("!me", StringComparison.OrdinalIgnoreCase) &&
-            !verb.Equals("!find", StringComparison.OrdinalIgnoreCase))
+            !verb.Equals("!find", StringComparison.OrdinalIgnoreCase) &&
+            !verb.Equals("!history", StringComparison.OrdinalIgnoreCase))
             return false;
 
         var arguments = separator < 0 ? string.Empty : input.Substring(separator + 1).Trim();

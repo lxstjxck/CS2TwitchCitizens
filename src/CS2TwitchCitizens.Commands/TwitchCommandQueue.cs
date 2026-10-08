@@ -13,4 +13,9 @@ public sealed class TwitchCommandQueue
     public bool TryDequeue(out TwitchCommand? command) => _commands.TryDequeue(out command);
 
     public int Count => _commands.Count;
+
+    public void Clear()
+    {
+        while (_commands.TryDequeue(out _)) { }
+    }
 }

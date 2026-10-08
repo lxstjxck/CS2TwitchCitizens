@@ -28,6 +28,17 @@ public sealed class ViewerBindingRegistry<TKey> where TKey : notnull
     public bool TryGet(string viewerId, out CitizenBinding<TKey>? binding) =>
         _byViewer.TryGetValue(viewerId, out binding);
 
+    public IReadOnlyList<CitizenBinding<TKey>> GetAllBindings() =>
+        new List<CitizenBinding<TKey>>(_byViewer.Values);
+
+    public bool Remove(string viewerId)
+    {
+        if (!_byViewer.TryGetValue(viewerId, out var binding)) return false;
+        _byViewer.Remove(viewerId);
+        _claimedCitizens.Remove(binding.CitizenKey);
+        return true;
+    }
+
     public JoinResult Join(string viewerId, TKey citizenKey, out CitizenBinding<TKey> binding)
     {
         if (string.IsNullOrWhiteSpace(viewerId))

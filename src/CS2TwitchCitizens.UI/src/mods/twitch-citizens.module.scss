@@ -1,0 +1,19 @@
+.root { position: relative; z-index: 10; font-family: inherit; }
+.openButton { white-space: nowrap; }
+.panel { position: absolute; top: 76px; right: 24px; width: 400px; min-width: 400px; max-width: 400px; height: auto; max-height: calc(100vh - 108px); box-sizing: border-box; z-index: 10; color: #f5f8fc; }
+.content { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; max-height: calc(100vh - 156px); }
+.summary { display: flex; justify-content: space-between; gap: 12px; font-size: 15px; }
+.status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status[data-status="Connected"] { color: #71d49a; }
+.status[data-status="AuthenticationError"] { color: #ff8b8b; }
+.channel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .8; font-size: 13px; }
+.tabs { display: flex; gap: 8px; }
+.search { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #5f7389; border-radius: 4px; background: #17212d; color: #fff; font-family: inherit; font-size: inherit; }
+.list { min-height: 84px; max-height: 320px; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.viewerName { min-width: 0; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rowMeta { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; opacity: .8; }
+.card, .settings { display: flex; flex-direction: column; gap: 7px; padding: 10px; background: rgba(16,29,42,.6); border-radius: 5px; font-size: 13px; }
+.card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+.empty, .notice { padding: 7px; opacity: .85; font-size: 13px; }
+@media (max-width: 1500px) { .panel { width: 360px; min-width: 360px; max-width: 360px; top: 68px; right: 16px; } }
