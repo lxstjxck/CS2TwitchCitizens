@@ -41,19 +41,22 @@ public sealed class ViewerPanelSnapshot
                 CurrentLifeId = b.CurrentLifeId,
                 TotalLives = b.TotalLives,
                 CurrentLifeStatus = b.CurrentLifeStatus,
-                PreviousLives = Array.ConvertAll(b.PreviousLives, life => new ViewerPanelLife {
-                    LifeId = life.LifeId, OriginalCitizenName = life.OriginalCitizenName,
-                    TwitchDisplayName = life.TwitchDisplayName,
-                    StartGameDate = life.StartGameDate, EndGameDate = life.EndGameDate,
-                    Status = life.Status, LastKnownAge = life.LastKnownAge,
-                    LastKnownWorkplace = life.LastKnownWorkplace,
-                    LastKnownHome = life.LastKnownHome, CauseOfDeath = life.CauseOfDeath
-                })
+                CurrentLife = b.CurrentLife == null ? null : ToPanelLife(b.CurrentLife),
+                PreviousLives = Array.ConvertAll(b.PreviousLives, ToPanelLife)
             };
         }
         return new ViewerPanelSnapshot { TwitchStatus = status, ChannelId = channelId,
             GameLoaded = gameLoaded, Viewers = rows };
     }
+
+    private static ViewerPanelLife ToPanelLife(ViewerLifeInfo life) => new ViewerPanelLife {
+        LifeId = life.LifeId, OriginalCitizenName = life.OriginalCitizenName,
+        TwitchDisplayName = life.TwitchDisplayName,
+        StartGameDate = life.StartGameDate, EndGameDate = life.EndGameDate,
+        Status = life.Status, LastKnownAge = life.LastKnownAge,
+        LastKnownWorkplace = life.LastKnownWorkplace,
+        LastKnownHome = life.LastKnownHome, CauseOfDeath = life.CauseOfDeath
+    };
 }
 
 [DataContract]
@@ -71,6 +74,7 @@ public sealed class ViewerPanelRow
     [DataMember(Name = "currentLifeId")] public string CurrentLifeId { get; set; } = string.Empty;
     [DataMember(Name = "totalLives")] public int TotalLives { get; set; }
     [DataMember(Name = "currentLifeStatus")] public string CurrentLifeStatus { get; set; } = string.Empty;
+    [DataMember(Name = "currentLife")] public ViewerPanelLife? CurrentLife { get; set; }
     [DataMember(Name = "previousLives")] public ViewerPanelLife[] PreviousLives { get; set; } = Array.Empty<ViewerPanelLife>();
 }
 

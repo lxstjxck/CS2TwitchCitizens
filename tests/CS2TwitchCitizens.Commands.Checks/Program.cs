@@ -125,7 +125,9 @@ var panel = ViewerPanelSnapshot.Create("Connected", "channel-42", true, new[] {
     new ViewerCitizenInfo { TwitchUserId = "viewer-1", Login = "first", DisplayName = "First",
         CitizenName = "first", Age = "Adult", Home = "Entity(1:1)", IsValid = true,
         PositionAvailable = true, CurrentLifeId = "life-2", TotalLives = 2,
-        CurrentLifeStatus = "Active", PreviousLives = new[] {
+        CurrentLifeStatus = "Active", CurrentLife = new ViewerLifeInfo {
+            LifeId = "life-2", Status = "Active", StartGameDate = "2026-07-01T00:00:00.0000000",
+            LastKnownAge = "Adult", LastKnownHome = "Main Street 4" }, PreviousLives = new[] {
             new ViewerLifeInfo { LifeId = "life-1", Status = "Deceased", LastKnownAge = "Elderly" }
         } },
     new ViewerCitizenInfo { TwitchUserId = "viewer-2", Login = "lost", IsValid = false }
@@ -140,6 +142,8 @@ using (var json = JsonDocument.Parse(panel.ToJson()))
     Check(!root.GetProperty("viewers")[1].GetProperty("isValid").GetBoolean());
     Check(root.GetProperty("viewers")[0].GetProperty("totalLives").GetInt32() == 2);
     Check(root.GetProperty("viewers")[0].GetProperty("previousLives")[0].GetProperty("status").GetString() == "Deceased");
+    Check(root.GetProperty("viewers")[0].GetProperty("currentLife").GetProperty("lastKnownHome").GetString() == "Main Street 4");
+    Check(root.GetProperty("viewers")[1].GetProperty("currentLife").ValueKind == JsonValueKind.Null);
     Check(!panel.ToJson().Contains("Entity(") && !panel.ToJson().Contains("accessToken") &&
           !panel.ToJson().Contains("clientSecret"));
 }
@@ -205,6 +209,34 @@ Check(EventSubProtocol.TryRead(ChatEnvelope("history-1", "!history"), out var hi
       EventSubProtocol.TryGetCommand(historyEnvelope!, "42", now, out var historyCommand) &&
       historyCommand!.Command == "!history" && historyCommand.TwitchUserId == "9001");
 Console.WriteLine("PASS: life transitions, duplicate protection, model roundtrip, city isolation, version guard, history command");
+
+static CitizenEligibilityFacts Candidate(bool claimed = false, bool dead = false,
+    bool visitor = false, bool movingAway = false, bool household = true,
+    bool home = true, bool references = true, bool outside = false,
+    bool position = true, bool adult = true) =>
+    new(true, claimed, dead, visitor, movingAway, household, home,
+        references, outside, position, adult);
+
+Check(CitizenEligibilityPolicy.Check(Candidate()) == CitizenRejection.None);
+Check(CitizenEligibilityPolicy.Check(Candidate(adult: true)) == CitizenRejection.None); // Worker is optional.
+Check(CitizenEligibilityPolicy.Check(Candidate(visitor: true)) == CitizenRejection.Visitor); // Tourist.
+Check(CitizenEligibilityPolicy.Check(Candidate(visitor: true, home: false)) == CitizenRejection.Visitor); // Temporary visitor.
+Check(CitizenEligibilityPolicy.Check(Candidate(household: false, home: false, outside: true)) == CitizenRejection.HouseholdUnavailable);
+Check(CitizenEligibilityPolicy.Check(Candidate(household: false)) == CitizenRejection.HouseholdUnavailable);
+Check(CitizenEligibilityPolicy.Check(Candidate(home: false)) == CitizenRejection.HomeUnavailable);
+Check(CitizenEligibilityPolicy.Check(Candidate(claimed: true)) == CitizenRejection.Claimed);
+Check(CitizenEligibilityPolicy.Check(Candidate(dead: true)) == CitizenRejection.Dead);
+Check(CitizenEligibilityPolicy.Check(Candidate(movingAway: true)) == CitizenRejection.MovingAway);
+Check(CitizenEligibilityPolicy.Check(Candidate(references: false)) == CitizenRejection.InvalidReference);
+Check(CitizenEligibilityPolicy.Check(Candidate(outside: true)) == CitizenRejection.OutsideConnection);
+Check(CitizenEligibilityPolicy.Check(Candidate(position: false)) == CitizenRejection.PositionUnavailable);
+Check(CitizenEligibilityPolicy.Check(Candidate(adult: false)) == CitizenRejection.None);
+Check(new[] { Candidate(visitor: true), Candidate(home: false), Candidate(dead: true) }
+    .All(candidate => CitizenEligibilityPolicy.Check(candidate) != CitizenRejection.None)); // No assignment.
+var nextLifeCandidate = Candidate();
+Check(lives.TryGet("viewer-a", out var rebornAccount) && rebornAccount!.Current!.Status == ViewerLifeStatus.Active);
+Check(CitizenEligibilityPolicy.Check(nextLifeCandidate) == CitizenRejection.None); // Same selection policy after death.
+Console.WriteLine("PASS: Citizen eligibility policy, visitor/move/home/claim/death/position and no candidate");
 
 static void Check(bool condition)
 {

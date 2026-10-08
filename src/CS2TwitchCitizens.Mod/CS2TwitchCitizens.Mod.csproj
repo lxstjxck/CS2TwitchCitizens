@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
-    <Version>0.6.0</Version>
+    <Version>0.6.4</Version>
     <ManagedPath Condition="'$(ManagedPath)' == '' and '$(CS2ManagedDir)' != ''">$(CS2ManagedDir)</ManagedPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == '' and Exists('$(ManagedPath)/../Content/Game/.ModdingToolchain/Mod.props')">$(ManagedPath)/../Content/Game/.ModdingToolchain</CS2ToolPath>

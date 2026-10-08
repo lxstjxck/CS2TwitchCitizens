@@ -13,7 +13,6 @@ using Game.Serialization;
 using Game.Simulation;
 using Game.UI;
 using Game.UI.InGame;
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -22,7 +21,8 @@ namespace CS2TwitchCitizens.Mod
     /// <summary>Consumes queued commands and stores city-specific viewer lives in the game save.</summary>
     public sealed partial class CitizenBindingSystem : GameSystemBase, IDefaultSerializable
     {
-        private const int MaxCommandsPerUpdate = 64;
+        // A !join may inspect the city's Citizen query; cap that work to one command per update.
+        private const int MaxCommandsPerUpdate = 1;
         private EntityQuery _citizens;
         private ViewerBindingRegistry<Entity> _bindings = new ViewerBindingRegistry<Entity>();
         private ViewerLifeJournal<Entity> _lives = new ViewerLifeJournal<Entity>();
@@ -35,6 +35,8 @@ namespace CS2TwitchCitizens.Mod
         private readonly Dictionary<string, int> _missingObservations =
             new Dictionary<string, int>(StringComparer.Ordinal);
         private CitizenCameraService? _camera;
+        private CitizenEligibilityService? _eligibility;
+        private bool _diagnoseRestoredBindings;
 #if DEBUG
         private bool _devSequenceEnqueued;
 #endif
@@ -47,6 +49,7 @@ namespace CS2TwitchCitizens.Mod
                 ComponentType.Exclude<Deleted>());
             RequireForUpdate(_citizens);
             _camera = new CitizenCameraService(World);
+            _eligibility = new CitizenEligibilityService(EntityManager, _citizens, entity => _lives.IsClaimed(entity));
             World.GetExistingSystemManaged<SerializerSystem>()?.SetDirty();
             Mod.Log.Info("[CS2TwitchCitizens] CitizenBindingSystem.OnCreate");
         }
@@ -61,6 +64,7 @@ namespace CS2TwitchCitizens.Mod
             _lives = new ViewerLifeJournal<Entity>();
             _identities.Clear();
             _missingObservations.Clear();
+            _diagnoseRestoredBindings = false;
             Mod.CommandQueue?.Clear();
             Mod.Log.Info($"[CS2TwitchCitizens] LIFE preload purpose={purpose} mode={mode}; city state cleared");
         }
@@ -82,6 +86,7 @@ namespace CS2TwitchCitizens.Mod
                 _lives = new ViewerLifeJournal<Entity>();
                 _identities.Clear();
                 _missingObservations.Clear();
+                _diagnoseRestoredBindings = false;
                 Mod.CommandQueue?.Clear();
                 return;
             }
@@ -107,6 +112,7 @@ namespace CS2TwitchCitizens.Mod
                     };
                 }
                 _pendingRestore = null;
+                _diagnoseRestoredBindings = _bindings.GetAllBindings().Count > 0;
                 // Commands received while the city was loading have no reliable city context.
                 Mod.CommandQueue?.Clear();
                 _loadReady = true;
@@ -226,6 +232,15 @@ namespace CS2TwitchCitizens.Mod
         protected override void OnUpdate()
         {
             if (!_loadReady || _loadFailed) return;
+            if (_diagnoseRestoredBindings)
+            {
+                _diagnoseRestoredBindings = false;
+                foreach (var binding in _bindings.GetAllBindings())
+                {
+                    var reason = _eligibility!.Check(binding.CitizenKey, false, out _);
+                    Mod.Log.Info($"[CS2TwitchCitizens] JOIN eligibility restored viewer={binding.TwitchUserId} citizen={binding.CitizenKey} result={reason}; binding retained");
+                }
+            }
             if (DateTime.UtcNow >= _nextLifeCheck)
             {
                 _nextLifeCheck = DateTime.UtcNow.AddSeconds(10);
@@ -287,7 +302,7 @@ namespace CS2TwitchCitizens.Mod
                 return;
             }
 
-            var citizen = FindAvailableCitizen();
+            var citizen = FindAvailableCitizen(command.TwitchUserId);
             if (citizen == Entity.Null)
             {
                 Mod.Log.Info($"[CS2TwitchCitizens] JOIN viewer={command.TwitchUserId} no eligible citizen");
@@ -324,25 +339,11 @@ namespace CS2TwitchCitizens.Mod
                 Mod.Log.Info($"[CS2TwitchCitizens] JOIN viewer={command.TwitchUserId} candidate already bound citizen={citizen}");
         }
 
-        private Entity FindAvailableCitizen()
+        private Entity FindAvailableCitizen(string viewerId)
         {
-            var fallback = Entity.Null;
-            using (var entities = _citizens.ToEntityArray(Allocator.Temp))
-            {
-                for (var i = 0; i < entities.Length; i++)
-                {
-                    var entity = entities[i];
-                    if (!IsValidCitizen(entity) || _lives.IsClaimed(entity) || CitizenUtils.IsDead(EntityManager, entity))
-                        continue;
-
-                    if (EntityManager.GetComponentData<Citizen>(entity).GetAge() == CitizenAge.Adult)
-                        return entity;
-                    if (fallback == Entity.Null)
-                        fallback = entity;
-                }
-            }
-
-            return fallback;
+            var chosen = _eligibility!.FindAvailable(out var diagnostic);
+            Mod.Log.Info($"[CS2TwitchCitizens] JOIN eligibility viewer={viewerId} {diagnostic}");
+            return chosen;
         }
 
         private void Me(TwitchCommand command)
@@ -614,6 +615,7 @@ namespace CS2TwitchCitizens.Mod
                 CurrentLifeId = current?.LifeId ?? string.Empty,
                 TotalLives = account?.Lives.Count ?? 0,
                 CurrentLifeStatus = current?.Status.ToString() ?? string.Empty,
+                CurrentLife = current == null ? null : ToLifeInfo(current),
                 PreviousLives = previous.ToArray(),
                 IsValid = (current == null || current.Status == ViewerLifeStatus.Active) && IsValidCitizen(entity)
             };
@@ -632,6 +634,8 @@ namespace CS2TwitchCitizens.Mod
                 info.CitizenName = identity?.AssignedName ?? string.Empty;
 
             info.Age = EntityManager.GetComponentData<Citizen>(entity).GetAge().ToString();
+            if (info.CurrentLife != null)
+                info.CurrentLife.LastKnownAge = info.Age;
             if (EntityManager.HasComponent<HouseholdMember>(entity))
             {
                 var household = EntityManager.GetComponentData<HouseholdMember>(entity).m_Household;
@@ -647,6 +651,14 @@ namespace CS2TwitchCitizens.Mod
             info.PositionAvailable = info.Position.HasValue;
             return info;
         }
+
+        private static ViewerLifeInfo ToLifeInfo(ViewerLife<Entity> life) => new ViewerLifeInfo {
+            LifeId = life.LifeId, OriginalCitizenName = life.OriginalCitizenName,
+            TwitchDisplayName = life.TwitchDisplayName, StartGameDate = life.StartGameDate,
+            EndGameDate = life.EndGameDate, Status = life.Status.ToString(),
+            LastKnownAge = life.LastKnownAge, LastKnownHome = life.LastKnownHome,
+            LastKnownWorkplace = life.LastKnownWorkplace, CauseOfDeath = life.CauseOfDeath
+        };
 
         private sealed class CitizenDisplayIdentity
         {

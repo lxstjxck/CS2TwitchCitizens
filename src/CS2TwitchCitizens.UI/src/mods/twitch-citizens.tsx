@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { bindLocalValue, bindTriggerWithArgs, bindValue, useValue } from "cs2/api";
 import { Button, Panel, Scrollable } from "cs2/ui";
 import styles from "./twitch-citizens.module.scss";
 import { filterViewers } from "./viewer-search";
+import { canLocate, isCameraError, lifeHistory, LifeSummary, selectedViewer } from "./viewer-view-model";
+import { ageText, connectionText, dateText, detectLocale, focusText, lifeCountText, lifeText, Locale, text, valueText, viewerCountText, viewerMetaText } from "./ui-text";
 
 type Viewer = {
   twitchUserId: string;
@@ -17,14 +19,10 @@ type Viewer = {
   currentLifeId: string;
   totalLives: number;
   currentLifeStatus: string;
-  previousLives: Array<{ lifeId: string; status: string; startGameDate: string; endGameDate: string }>;
+  currentLife: LifeSummary | null;
+  previousLives: LifeSummary[];
 };
-type Snapshot = {
-  twitchStatus: string;
-  channelId: string;
-  gameLoaded: boolean;
-  viewers: Viewer[];
-};
+type Snapshot = { twitchStatus: string; channelId: string; gameLoaded: boolean; viewers: Viewer[] };
 type FocusFeedback = { viewerId: string; result: string; sequence: number };
 
 const group = "cs2twitchcitizens";
@@ -34,30 +32,7 @@ const focusCitizen = bindTriggerWithArgs<[string]>(group, "focusCitizen");
 const followCitizen = bindTriggerWithArgs<[string]>(group, "followCitizen");
 const stopFollowing = bindTriggerWithArgs<[string]>(group, "stopFollowing");
 const panelOpen = bindLocalValue(false);
-
-const statusText: Record<string, string> = {
-  Disabled: "Выключен",
-  Connecting: "Подключение",
-  Connected: "Подключён",
-  Reconnecting: "Переподключение",
-  AuthenticationError: "Ошибка авторизации",
-  Disconnected: "Отключён",
-};
-const focusText: Record<string, string> = {
-  CitizenNotFound: "Житель не найден",
-  PositionUnavailable: "Положение жителя недоступно",
-  CameraUnavailable: "Камера сейчас недоступна",
-  FocusRequested: "Перемещение камеры запрошено",
-  FocusConfirmed: "Камера находится рядом с жителем",
-  FocusFailed: "Не удалось переместить камеру",
-  FollowRequested: "Слежение запрошено; проверьте камеру в игре",
-  FollowStopped: "Слежение остановлено",
-};
-const lifeStatusText: Record<string, string> = {
-  Active: "Привязан",
-  Deceased: "Умер",
-  Missing: "Местонахождение неизвестно",
-};
+const localeBinding = bindLocalValue<Locale>(detectLocale());
 
 function parseSnapshot(value: string): Snapshot {
   try {
@@ -73,91 +48,192 @@ function parseSnapshot(value: string): Snapshot {
   }
 }
 
+function parseFeedback(value: string): FocusFeedback | null {
+  try { return JSON.parse(value) as FocusFeedback; }
+  catch { return null; }
+}
+
+function displayName(viewer: Viewer, locale: Locale): string {
+  return viewer.displayName || viewer.login || text(locale, "noData");
+}
+
 export const TwitchCitizensButton = () => {
   const open = useValue(panelOpen);
+  const locale = useValue(localeBinding);
   const snapshotJson = useValue(snapshotBinding);
   const snapshot = useMemo(() => parseSnapshot(snapshotJson), [snapshotJson]);
 
-  return <div className={styles.root}>
-    <Button variant="default" className={styles.openButton} onSelect={() => {
-      console.info(`[CS2TwitchCitizens.UI] toggle panel open=${!open}`);
-      panelOpen.update(!open);
-    }}>
-      Twitch Citizens {snapshot.viewers.length > 0 ? `(${snapshot.viewers.length})` : ""}
+  return <div className={styles.root} data-locale={locale}>
+    <Button variant="default" className={`${styles.control} ${styles.openButton}`}
+      onSelect={() => panelOpen.update(!open)}>
+      {text(locale, "open")} {snapshot.viewers.length > 0 ? `(${snapshot.viewers.length})` : ""}
     </Button>
   </div>;
 };
 
 export const TwitchCitizensPanel = () => {
   const open = useValue(panelOpen);
-  const [settings, setSettings] = useState(false);
+  const locale = useValue(localeBinding);
+  const [tab, setTab] = useState<"residents" | "settings">("residents");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [viewMode, setViewMode] = useState<"info" | "history">("info");
   const snapshotJson = useValue(snapshotBinding);
   const snapshot = useMemo(() => parseSnapshot(snapshotJson), [snapshotJson]);
-  const focusResultJson = useValue(focusResultBinding);
-  const focusResult = useMemo(() => {
-    try { return JSON.parse(focusResultJson) as FocusFeedback; }
-    catch { return null; }
-  }, [focusResultJson]);
+  const feedbackJson = useValue(focusResultBinding);
+  const feedback = useMemo(() => parseFeedback(feedbackJson), [feedbackJson]);
   const viewers = useMemo(() => filterViewers(snapshot.viewers, search), [snapshot.viewers, search]);
-  const selected = snapshot.viewers.find((viewer) => viewer.twitchUserId === selectedId);
-  useEffect(() => {
-    if (open) console.info("[CS2TwitchCitizens.UI] panel mounted");
-  }, [open]);
+  const selected = selectedViewer(viewers, selectedId);
+  const history = selected ? lifeHistory(selected.currentLife, selected.previousLives || []) : [];
+  const selectedFeedback = feedback && selected && feedback.viewerId === selected.twitchUserId
+    ? feedback.result : undefined;
+  const boundCount = snapshot.viewers.filter((viewer) => viewer.currentLifeStatus === "Active" && viewer.isValid).length;
+  const totalLives = snapshot.viewers.reduce((count, viewer) => count + viewer.totalLives, 0);
 
   if (!open) return null;
-  return <Panel className={styles.panel} header={<span>Twitch Citizens</span>} onClose={() => panelOpen.update(false)}>
+  return <Panel className={styles.panel} data-locale={locale} onClose={() => { setViewMode("info"); panelOpen.update(false); }}
+    header={<div className={styles.header}>
+      <span className={styles.brandGlyph} aria-hidden="true">TC</span>
+      <div className={styles.headerText}>
+        <strong>{text(locale, "title")}</strong>
+        <small>{text(locale, "subtitle")}</small>
+      </div>
+    </div>}>
+    <Scrollable className={styles.body} vertical trackVisibility="scrollable">
       <div className={styles.content}>
-        <div className={styles.summary}>
-          <span className={styles.status} data-status={snapshot.twitchStatus}>
-            Twitch: {statusText[snapshot.twitchStatus] ?? snapshot.twitchStatus}
-          </span>
-          <span>Зрителей: {snapshot.viewers.length}</span>
+        <div className={styles.connection} data-status={snapshot.twitchStatus}>
+          <span className={styles.connectionDot} aria-hidden="true" />
+          <span className={styles.connectionLabel}>{connectionText(locale, snapshot.twitchStatus)}</span>
+          <span className={styles.connectionCount}>{viewerCountText(locale, boundCount)}</span>
         </div>
-        <div className={styles.channel}>Канал ID: {snapshot.channelId || "не настроен"}</div>
+
+        <div className={styles.stats}>
+          <div className={styles.stat}><span>{text(locale, "bound")}</span><strong>{boundCount}</strong></div>
+          <div className={styles.stat}><span>{text(locale, "totalLives")}</span><strong>{totalLives}</strong></div>
+        </div>
+
         <div className={styles.tabs}>
-          <Button variant={settings ? "text" : "primary"} onSelect={() => setSettings(false)}>Жители</Button>
-          <Button variant={settings ? "primary" : "text"} onSelect={() => setSettings(true)}>Настройки</Button>
+          <Button variant="default" selected={tab === "residents"} data-selected={tab === "residents"}
+            className={`${styles.control} ${styles.tab}`} onSelect={() => setTab("residents")}>{text(locale, "residents")}</Button>
+          <Button variant="default" selected={tab === "settings"} data-selected={tab === "settings"}
+            className={`${styles.control} ${styles.tab}`} onSelect={() => setTab("settings")}>{text(locale, "settings")}</Button>
         </div>
-        {settings ? <div className={styles.settings}>
-          <div>Канал: {snapshot.channelId || "не настроен"}</div>
-          <div>Состояние: {statusText[snapshot.twitchStatus] ?? snapshot.twitchStatus}</div>
-          <div>Настройки доступны только для чтения. Измените локальный конфигурационный файл и перезапустите игру.</div>
-          <div>Авторизация через браузер будет добавлена в будущем.</div>
+
+        {tab === "settings" ? <div className={styles.settings}>
+          <div className={styles.settingsRow}><span>{text(locale, "connection")}</span><strong>{connectionText(locale, snapshot.twitchStatus)}</strong></div>
+          <div className={styles.settingsRow}><span>{text(locale, "channel")}</span><strong className={styles.longValue}>{snapshot.channelId || text(locale, "channelMissing")}</strong></div>
+          <div className={styles.settingsRow}><span>{text(locale, "language")}</span>
+            <div className={styles.languageButtons}>
+              <Button variant="default" selected={locale === "ru"} data-selected={locale === "ru"}
+                className={`${styles.control} ${styles.languageButton}`} onSelect={() => localeBinding.update("ru")}>RU</Button>
+              <Button variant="default" selected={locale === "en"} data-selected={locale === "en"}
+                className={`${styles.control} ${styles.languageButton}`} onSelect={() => localeBinding.update("en")}>EN</Button>
+            </div>
+          </div>
+          <p className={styles.helper}>{text(locale, "languageAuto")}</p>
+          <p className={styles.helper}>{text(locale, "settingsNote")}</p>
         </div> : <>
-          {!snapshot.gameLoaded && <div className={styles.notice}>Загрузите город, чтобы видеть жителей.</div>}
-          <input className={styles.search} type="text" value={search} onChange={(event) => setSearch(event.target.value)}
-            placeholder="Поиск по Twitch-имени" aria-label="Поиск зрителя" />
-          <Scrollable className={styles.list} vertical trackVisibility="scrollable">
-            {viewers.length === 0 && <div className={styles.empty}>Зрители не найдены</div>}
-            {viewers.map((viewer) => <div className={styles.row} key={viewer.twitchUserId}>
-              <Button variant="text" className={styles.viewerName} onSelect={() => setSelectedId(viewer.twitchUserId)}>
-                {viewer.displayName || viewer.login || viewer.twitchUserId}
-              </Button>
-              <div className={styles.rowMeta}>{viewer.age || "Возраст неизвестен"} · {lifeStatusText[viewer.currentLifeStatus] ?? "Устарел"} · Жизней: {viewer.totalLives || 0}</div>
-              <Button variant="default" disabled={!viewer.isValid || !viewer.positionAvailable}
-                onSelect={() => { setSelectedId(viewer.twitchUserId); focusCitizen(viewer.twitchUserId); }}>Найти</Button>
-            </div>)}
+          {!snapshot.gameLoaded && <div className={styles.notice}>{text(locale, "loadCity")}</div>}
+          <input className={styles.search} type="text" value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={text(locale, "search")} aria-label={text(locale, "searchLabel")} />
+          <Scrollable className={styles.viewerList} vertical trackVisibility="scrollable">
+            {viewers.length === 0 && <div className={styles.empty}>{text(locale, "empty")}</div>}
+            {viewers.map((viewer) => <Button variant="default" key={viewer.twitchUserId}
+              selected={viewer.twitchUserId === selected?.twitchUserId}
+              data-selected={viewer.twitchUserId === selected?.twitchUserId}
+              tooltipLabel={displayName(viewer, locale)}
+              className={`${styles.control} ${styles.viewerRow}`} onSelect={() => setSelectedId(viewer.twitchUserId)}>
+              <span className={styles.rowText}>
+                <strong className={styles.longValue} title={displayName(viewer, locale)}>
+                  {text(locale, "name")}: {displayName(viewer, locale)}
+                </strong>
+                {viewerMetaText(locale, viewer.age, viewer.totalLives) &&
+                  <small className={styles.rowMeta} title={viewerMetaText(locale, viewer.age, viewer.totalLives)}>
+                    {viewerMetaText(locale, viewer.age, viewer.totalLives)}
+                  </small>}
+              </span>
+              <span className={styles.lifePill} data-life={viewer.currentLifeStatus}>
+                {lifeText(locale, viewer.currentLifeStatus)}
+              </span>
+            </Button>)}
           </Scrollable>
+
           {selected && <div className={styles.card}>
-            <strong>{selected.displayName || selected.login}</strong>
-            <div>Логин: {selected.login || "—"}</div>
-            <div>Имя в городе: {selected.citizenName || "—"}</div>
-            <div>Возраст: {selected.age || "—"}</div>
-            <div>Дом: {selected.hasHome ? "есть" : "нет"} · Работа: {selected.hasWorkplace ? "есть" : "нет"}</div>
-            <div>Местоположение: {selected.positionAvailable ? "доступно" : "недоступно"}</div>
-            <div>Жизней: {selected.totalLives || 0} · Статус: {lifeStatusText[selected.currentLifeStatus] ?? "неизвестен"}</div>
-            <Button variant="primary" disabled={!selected.isValid || !selected.positionAvailable}
-              onSelect={() => focusCitizen(selected.twitchUserId)}>Найти в городе</Button>
-            <Button variant="default" disabled={!selected.isValid || !selected.positionAvailable}
-              onSelect={() => followCitizen(selected.twitchUserId)}>Следить</Button>
-            <Button variant="default" onSelect={() => stopFollowing(selected.twitchUserId)}>Остановить слежение</Button>
-          </div>}
-          {focusResult?.viewerId === selectedId && <div className={styles.notice}>
-            {focusText[focusResult.result] ?? focusResult.result}
+            <div className={styles.cardHeader}>
+              <div className={styles.cardIdentity}>
+                <strong className={styles.longValue} title={displayName(selected, locale)}>{displayName(selected, locale)}</strong>
+                {selected.login && selected.login !== selected.displayName &&
+                  <small className={styles.longValue}>@{selected.login}</small>}
+                {selected.citizenName && selected.citizenName !== displayName(selected, locale) &&
+                  <small className={styles.longValue}>{text(locale, "citizenName")}: {selected.citizenName}</small>}
+                {viewerMetaText(locale, selected.age, selected.totalLives) &&
+                  <small className={styles.cardMeta} title={viewerMetaText(locale, selected.age, selected.totalLives)}>
+                    {viewerMetaText(locale, selected.age, selected.totalLives)}
+                  </small>}
+              </div>
+              <span className={styles.lifePill} data-life={selected.currentLifeStatus}>
+                {lifeText(locale, selected.currentLifeStatus)}
+              </span>
+            </div>
+
+            <div className={styles.cardTabs}>
+              <Button variant="default" selected={viewMode === "info"} data-selected={viewMode === "info"}
+                className={`${styles.control} ${styles.cardTab}`} onSelect={() => setViewMode("info")}>{text(locale, "infoTab")}</Button>
+              <Button variant="default" selected={viewMode === "history"} data-selected={viewMode === "history"}
+                className={`${styles.control} ${styles.cardTab}`} onSelect={() => setViewMode("history")}>{text(locale, "lifeHistory")}</Button>
+            </div>
+
+            {viewMode === "history" ? <Scrollable className={styles.historyList} vertical trackVisibility="scrollable">
+              {history.length === 0 &&
+                <div className={styles.empty}>{text(locale, "emptyHistory")}</div>}
+              {history.map(({ number, life }) =>
+                <div className={styles.historyEntry} key={life.lifeId || number}>
+                  <div className={styles.historyHeader}>
+                    <strong>{text(locale, "lifeNumber")}{number}</strong>
+                    <span className={styles.lifePill} data-life={life.status}>{lifeText(locale, life.status)}</span>
+                  </div>
+                  <div className={styles.historyFacts}>
+                    <div className={styles.fact}><span>{text(locale, "citizenName")}</span><strong>{valueText(locale, number === selected.totalLives && life.status === "Active" ? selected.citizenName || life.originalCitizenName?.replace(/^(custom|label):/, "") : life.originalCitizenName?.replace(/^(custom|label):/, ""))}</strong></div>
+                    <div className={styles.fact}><span>{text(locale, "age")}</span><strong>{ageText(locale, number === selected.totalLives && life.status === "Active" ? selected.age || life.lastKnownAge : life.lastKnownAge)}</strong></div>
+                    <div className={styles.fact}><span>{text(locale, "startDate")}</span><strong>{dateText(locale, life.startGameDate)}</strong></div>
+                    {life.endGameDate && <div className={styles.fact}><span>{text(locale, "endDate")}</span><strong>{dateText(locale, life.endGameDate)}</strong></div>}
+                    <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{valueText(locale, life.lastKnownHome)}</strong></div>
+                    <div className={styles.fact}><span>{text(locale, "workplace")}</span><strong>{valueText(locale, life.lastKnownWorkplace)}</strong></div>
+                    {life.causeOfDeath && <div className={styles.fact}><span>{text(locale, "causeOfDeath")}</span><strong>{life.causeOfDeath}</strong></div>}
+                  </div>
+                </div>)}
+            </Scrollable> : <>
+            <div className={styles.facts}>
+              <div className={styles.fact}><span>{text(locale, "age")}</span><strong>{ageText(locale, selected.age)}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "history")}</span><strong>{lifeCountText(locale, selected.totalLives)}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{selected.hasHome ? text(locale, "yes") : text(locale, "noData")}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "workplace")}</span><strong>{selected.hasWorkplace ? text(locale, "yes") : text(locale, "noData")}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "location")}</span><strong>{selected.positionAvailable ? text(locale, "available") : text(locale, "unavailable")}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "status")}</span><strong>{lifeText(locale, selected.currentLifeStatus)}</strong></div>
+            </div>
+
+            <Button variant="default" className={`${styles.control} ${styles.findButton}`}
+              disabled={!canLocate(selected)} data-disabled={!canLocate(selected)}
+              onSelect={() => focusCitizen(selected.twitchUserId)}>{text(locale, "find")}</Button>
+            <div className={styles.cameraActions}>
+              <Button variant="default" className={`${styles.control} ${styles.secondaryButton}`}
+                disabled={!canLocate(selected)} data-disabled={!canLocate(selected)}
+                onSelect={() => followCitizen(selected.twitchUserId)}>{text(locale, "follow")}</Button>
+              <Button variant="default" className={`${styles.control} ${styles.secondaryButton}`}
+                tooltipLabel={text(locale, "stopFollow")}
+                onSelect={() => stopFollowing(selected.twitchUserId)}>
+                {text(locale, "stopFollow")}
+              </Button>
+            </div>
+            <div className={styles.cameraFeedback} data-error={isCameraError(selectedFeedback)}>
+              {focusText(locale, selectedFeedback)}
+            </div>
+            </>}
           </div>}
         </>}
+        <div className={styles.footer}>{text(locale, "cameraNote")}</div>
       </div>
-    </Panel>;
+    </Scrollable>
+  </Panel>;
 };

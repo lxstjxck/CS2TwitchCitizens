@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.6.4 — Viewer life history UI
+
+- Added a current-life DTO to the existing city journal projection. The panel now shows current and completed lives newest first inside the selected viewer card, with saved dates, age, home, workplace, and a verified death cause when available. Missing stays distinct from death. The city-save format remains version 1.
+- Added RU/EN life history labels, a compact scrollable history view, and an information tab that returns to the existing camera actions. Empty fields show localized No data. The existing local Cyrillic font rules remain in place.
+- Added DTO and UI checks for current-life JSON, life ordering, statuses, missing fields, date formatting, and navigation. TypeScript typecheck, C# checks, UI tests, webpack, official Code Mod postprocessing and Burst, and both local deployments passed. Webpack reports the existing Sass legacy API warning; the game save/load and visual appearance still require in-game verification.
+
+## 0.6.3.2 — Control text and duplicate close correction
+
+- In-game screenshot confirmed the previous font change on the panel container did not fix Cyrillic inside native `Button` controls or the search `input`. The panel's ordinary text renders correctly, while these controls still show missing glyph boxes. Their local CSS now selects the game's `Noto Sans` directly when the mod UI is Russian; English controls use the game's `--fontFamily`. This removes the controls' `font-family: inherit` rule without changing global game styles.
+- The screenshot also showed two working close controls. Removed the extra button added in 0.6.3.1, leaving the game's visible cross and the panel's existing `onClose` handler. The earlier `closeIcon` theme override remains removed.
+- TypeScript typecheck, UI tests, webpack build, and local deployment passed. The only build warning remains the Sass legacy API deprecation. The game was running during deployment, so a full restart is required before checking the corrected UI visually.
+
+## 0.6.3.1 — Cyrillic font and close icon hotfix
+
+- Fixed the v0.6.3 font regression in the UI controls: the mod's RU/EN switch is independent of the game's locale, while the new controls inherited the game's current font. The installed game selects `Noto Sans` first for `locale-ru-RU` and `Overpass` first by default. The mod now applies the same `Noto Sans` family locally when its Russian UI is selected and uses the game's `--fontFamily` otherwise. Source and deployed bundle contain intact UTF-8 Russian strings.
+- Removed the `Panel.theme.closeIcon` override, which supplied a CSS Module class where the game expects an image URL. `UI.log` showed failed requests for `assetdb://gameui/closeIcon_Bq8`. A local 28×28 close button now draws two crossing CSS lines and closes the panel through the existing local open state; the panel's `onClose` remains wired.
+- TypeScript typecheck, UI tests, and webpack build passed. The build reported only the existing Sass legacy API deprecation warning and deployed the UI module to `CSII_USERDATAPATH/Mods/CS2TwitchCitizens.UI`. In-game visual confirmation remains pending.
+
+## 0.6.3 — UI cleanup and consistent controls
+
+- Removed literal circle glyphs from viewer rows and the card, replaced the header glyph with a text badge, and removed the standalone `#` from the life number. A localized helper now renders `Взрослый · Жизнь №1` / `Adult · Life 1` without dangling separators when age or life count is missing. Unknown age values display `Нет данных` / `No data` instead of raw technical strings.
+- Applied scoped dark-blue control styling to the top-right button, tabs, viewer rows, language buttons, and camera actions. The native `Panel.theme.closeButton`/`closeIcon` slots style the close control without a global reset. Hover, active, focus-visible, selected, and disabled states are explicit; the search field gets a matching focus state. The camera actions, bindings, DTOs, and registration hooks are unchanged.
+- Added UI checks for localized life numbers, empty metadata, long-name access, absence of stray glyphs and raw placeholders, and scoped button states. Runtime appearance still requires an in-game check.
+- TypeScript typecheck and UI tests passed. The official webpack UI build deployed v0.6.3 locally; its only warning is the existing Sass legacy API deprecation. No C# files or Code Mod package were rebuilt for this visual-only change.
+
+## 0.6.2 — In-game UI redesign
+
+- Reworked the existing `GameTopRight` button and `Game` panel using the installed UI template's native `Button`, `Panel`, and `Scrollable` components. The panel now has a compact connection summary, bound-viewer/life totals, search, Residents and Settings tabs, a scrollable viewer list, and one selected viewer card. Camera triggers and C# bindings are unchanged.
+- Added RU/EN interface dictionaries with system-language initial choice and an in-panel manual switch. UI labels, statuses, feedback, and Citizen age categories are localized without changing DTO values or Twitch names. Search now includes the Citizen name. The card uses `Нет данных`/`No data` for absent home, work, and age values.
+- Scoped CSS Modules keep the dark blue panel at 420 px (380 px at 1280-wide screens), bound its height to the viewport, wrap long values and two-column facts, and cap the viewer list. Static UI tests cover 0/1/10/100 viewers, search, selection, long/missing values, RU/EN, camera states, and layout guards. Visual appearance at 1280×720, 1920×1080 and 2560×1440 still requires an in-game check.
+- TypeScript typecheck, UI tests, and official webpack build passed. Webpack reported only the existing Sass legacy API deprecation warning. The v0.6.2 UI bundle was installed through the template's `CSII_USERDATAPATH/Mods` output path. C# projects were unchanged for this milestone, so the Code Mod remains at v0.6.1.
+
+## 0.6.1 — Citizen eligibility for new joins
+
+- Replaced first-free-Citizen selection with `CitizenEligibilityService`. A new `!join` requires a living, unclaimed Citizen whose household exists, is neither tourist nor commuter, is not moving away, and rents an existing residential building. It also rejects invalid optional ECS links, outside-connection targets, and unavailable positions. Work is optional; adults are preferred. No map-center radius is used.
+- Selection runs only for a new `!join` and logs `[CS2TwitchCitizens] JOIN eligibility` with viewed count, rejection counts, and selected Entity. Command consumption is capped at one per simulation update so a chat burst cannot trigger many full candidate scans in one update. Previously restored bindings are checked once for diagnostics and retained even if they fail the new rule; save format, life history, Twitch delivery, and camera behavior are unchanged.
+- Added policy checks for resident/unemployed eligibility, tourists, temporary visitors, outside connections, broken household/home references, claimed/dead Citizens, moving away, absent positions, no candidates, and a later life. Official game build, Entities generators, `ModPostProcessor`, Burst, and `DeployWIP` passed with zero warnings/errors. In-game selection behavior still requires a runtime test.
+
 ## 0.6.0 — Persistent Viewer Bindings & Life History
 
 - Added city-save serialization to `CitizenBindingSystem` through the installed game's `IDefaultSerializable` system serializer. Format 1 writes Twitch user ID, login/display name, active Citizen through `IWriter.Write(Entity)`, and a versioned life history. OAuth credentials remain in local configuration and are never written to the save. Restored Entity references are validated after game deserialization; a missing old save section starts with an empty journal. Unknown or corrupt format blocks mod commands and saves rather than silently replacing history.

@@ -42,7 +42,7 @@ ConcurrentQueue -> ECS
 Use SemVer.
 
 Current target:
-0.6.0
+0.6.3
 
 Update CHANGELOG.md for every completed feature.
 

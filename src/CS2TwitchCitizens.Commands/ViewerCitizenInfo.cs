@@ -18,6 +18,7 @@ public sealed class ViewerCitizenInfo
     public string CurrentLifeId { get; set; } = string.Empty;
     public int TotalLives { get; set; }
     public string CurrentLifeStatus { get; set; } = string.Empty;
+    public ViewerLifeInfo? CurrentLife { get; set; }
     public ViewerLifeInfo[] PreviousLives { get; set; } = Array.Empty<ViewerLifeInfo>();
 }
 
