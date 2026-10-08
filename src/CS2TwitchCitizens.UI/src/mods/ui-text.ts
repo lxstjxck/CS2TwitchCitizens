@@ -8,12 +8,21 @@ const ru = {
   bound: "Привязано", totalLives: "Всего жизней", life: "жизнь", lives: "жизни",
   age: "Возраст", status: "Статус", home: "Дом", workplace: "Работа", location: "Местоположение",
   history: "История", citizenName: "Имя жителя", login: "Логин Twitch",
+  displayName: "Имя Twitch",
   lifeNumber: "Жизнь №", infoTab: "Информация", lifeHistory: "История жизней",
   emptyHistory: "История жизней пуста", startDate: "Начало", endDate: "Конец", causeOfDeath: "Причина смерти",
   noData: "Нет данных", yes: "Есть", available: "Доступно", unavailable: "Недоступно",
   find: "Найти в городе", follow: "Следить", stopFollow: "Остановить слежение",
   cameraIdle: "Камера ожидает действия.", cameraNote: "Камера управляется только из интерфейса игры.",
-  channel: "ID канала", channelMissing: "Не настроен", settingsNote: "Настройки доступны только для чтения. Измените локальный конфигурационный файл и перезапустите игру.",
+  channel: "ID канала", channelMissing: "Не настроен", settingsNote: "Авторизация действует для пользователя Windows. Привязки жителей сохраняются в городе.",
+  connectTwitch: "Подключить Twitch", reconnectTwitch: "Переподключить", disconnectTwitch: "Отключить Twitch",
+  cancelAuth: "Отмена", openTwitch: "Открыть Twitch", waitingAuth: "Ожидание подтверждения в Twitch",
+  requestingAuth: "Запрос авторизации...", codeExpires: "Код действует ещё",
+  clientIdMissing: "Не задан Client ID приложения. Обратитесь к владельцу сборки.",
+  storageError: "Не удалось сохранить или прочитать учётные данные. Авторизуйтесь снова.",
+  codeExpired: "Срок действия кода истёк. Повторите подключение.", authDenied: "Авторизация отклонена.",
+  reauthorize: "Доступ отозван. Подключите Twitch снова.", networkError: "Ошибка сети. Повторите попытку.",
+  legacyNotice: "Обнаружена старая конфигурация. Её токен не используется и не удаляется. Подключите Twitch через эту вкладку.",
   language: "Язык интерфейса", languageAuto: "Выбран по языку системы; можно переключить здесь.",
   connectionDisabled: "Twitch выключен", connectionConnecting: "Подключение к Twitch",
   connectionConnected: "Twitch подключён", connectionReconnecting: "Переподключение к Twitch",
@@ -34,12 +43,21 @@ const en: Record<keyof typeof ru, string> = {
   bound: "Bound", totalLives: "Total lives", life: "life", lives: "lives",
   age: "Age", status: "Status", home: "Home", workplace: "Work", location: "Location",
   history: "History", citizenName: "Citizen name", login: "Twitch login",
+  displayName: "Twitch name",
   lifeNumber: "Life ", infoTab: "Information", lifeHistory: "Life history",
   emptyHistory: "No life history", startDate: "Start", endDate: "End", causeOfDeath: "Cause of death",
   noData: "No data", yes: "Available", available: "Available", unavailable: "Unavailable",
   find: "Find in city", follow: "Follow", stopFollow: "Stop following",
   cameraIdle: "Camera is waiting for an action.", cameraNote: "Camera actions are available only from the game UI.",
-  channel: "Channel ID", channelMissing: "Not configured", settingsNote: "Settings are read only. Edit the local configuration file and restart the game.",
+  channel: "Channel ID", channelMissing: "Not configured", settingsNote: "Authorization belongs to this Windows user. Citizen bindings remain in the city save.",
+  connectTwitch: "Connect Twitch", reconnectTwitch: "Reconnect", disconnectTwitch: "Disconnect Twitch",
+  cancelAuth: "Cancel", openTwitch: "Open Twitch", waitingAuth: "Waiting for Twitch authorization",
+  requestingAuth: "Requesting authorization...", codeExpires: "Code expires in",
+  clientIdMissing: "The application Client ID is missing. Contact the build owner.",
+  storageError: "Could not read or save credentials. Authorize again.",
+  codeExpired: "The code expired. Try connecting again.", authDenied: "Authorization was denied.",
+  reauthorize: "Access was revoked. Connect Twitch again.", networkError: "Network error. Try again.",
+  legacyNotice: "An old configuration was found. Its token is not used or deleted. Connect Twitch here.",
   language: "Interface language", languageAuto: "Initially follows the system language; you can switch it here.",
   connectionDisabled: "Twitch disabled", connectionConnecting: "Connecting to Twitch",
   connectionConnected: "Twitch connected", connectionReconnecting: "Reconnecting to Twitch",
@@ -74,6 +92,11 @@ export function valueText(locale: Locale, value?: string): string {
     ? clean : text(locale, "noData");
 }
 
+const ruMonths = ["январь", "февраль", "март", "апрель", "май", "июнь",
+  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+const enMonths = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
 export function dateText(locale: Locale, value?: string): string {
   if (!value) return text(locale, "noData");
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -82,10 +105,9 @@ export function dateText(locale: Locale, value?: string): string {
   const month = Number(match[2]);
   const day = Number(match[3]);
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day
-    ? text(locale, "noData") :
-    new Intl.DateTimeFormat(locale === "ru" ? "ru-RU" : "en-US",
-      { month: "long", year: "numeric", timeZone: "UTC" }).format(date);
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day)
+    return text(locale, "noData");
+  return locale === "ru" ? `${ruMonths[month - 1]} ${year} г.` : `${enMonths[month - 1]} ${year}`;
 }
 
 export function lifeText(locale: Locale, status: string): string {

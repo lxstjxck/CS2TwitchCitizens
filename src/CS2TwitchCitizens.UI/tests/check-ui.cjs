@@ -65,6 +65,26 @@ assert.equal(valueText("en", "undefined"), "No data");
 assert.equal(dateText("en", ""), "No data");
 assert.equal(dateText("en", "2026-07-01T00:00:00.0000000"), "July 2026");
 assert.equal(dateText("ru", "2026-07-01T00:00:00.0000000"), "июль 2026 г.");
+assert.equal(dateText("en", "2026-01-31T23:59:59"), "January 2026");
+assert.equal(dateText("ru", "2026-12-31T23:59:59"), "декабрь 2026 г.");
+for (const invalid of ["invalid", "2026-02-30", "2026-13-01", "2026-00-01", "2026-04-31"]) {
+  assert.equal(dateText("en", invalid), "No data");
+  assert.equal(dateText("ru", invalid), "Нет данных");
+}
+const savedIntl = globalThis.Intl;
+try {
+  globalThis.Intl = undefined;
+  const singleLife = lifeHistory({ ...life("1", "Active"), startGameDate: "2026-07-01" }, []);
+  assert.equal(singleLife.length, 1);
+  assert.equal(dateText("ru", singleLife[0].life.startGameDate), "июль 2026 г.");
+  const multipleLives = lifeHistory({ ...life("2", "Active"), startGameDate: "2026-07-01" },
+    [{ ...life("1", "Deceased"), startGameDate: "2025-03-01" }]);
+  assert.deepEqual(multipleLives.map(({ number }) => number), [2, 1]);
+  assert.deepEqual(multipleLives.map(({ life: item }) => dateText("en", item.startGameDate)),
+    ["July 2026", "March 2025"]);
+} finally {
+  globalThis.Intl = savedIntl;
+}
 
 assert.equal(detectLocale("ru-RU"), "ru");
 assert.equal(detectLocale("en-US"), "en");
@@ -104,6 +124,11 @@ const utf8 = new TextDecoder("utf-8", { fatal: true });
 for (const file of ["ui-text.ts", "twitch-citizens.tsx"]) {
   const content = utf8.decode(fs.readFileSync(path.join(__dirname, `../src/mods/${file}`)));
   assert.doesNotMatch(content, /\uFFFD/);
+}
+for (const file of fs.readdirSync(path.join(__dirname, "../src/mods"))) {
+  if (!/\.tsx?$/.test(file)) continue;
+  const content = fs.readFileSync(path.join(__dirname, "../src/mods", file), "utf8");
+  assert.doesNotMatch(content, /\bIntl\b/, `${file} must not depend on Intl`);
 }
 assert.match(css, /\.root\[data-locale="ru"\],\s*\.panel\[data-locale="ru"\]\s*\{\s*font-family:\s*"Noto Sans"/);
 assert.match(css, /\.panel\s*\{\s*font-family:\s*var\(--fontFamily\)/);
@@ -145,10 +170,18 @@ assert.match(jsx, /tooltipLabel=\{displayName\(viewer, locale\)\}/);
 assert.doesNotMatch(jsx, /○|◎|· #|>null<|>undefined</);
 assert.equal((jsx.match(/<div className=\{styles\.card\}/g) || []).length, 1);
 assert.match(jsx, /module\.scss/);
+for (const trigger of ["connectTwitch", "cancelTwitch", "reconnectTwitch", "disconnectTwitch", "openTwitchVerification"]) {
+  assert.match(jsx, new RegExp(`bindTriggerWithArgs<\\[string\\]>\\(group, "${trigger}"\\)`));
+}
+for (const key of ["connectTwitch", "waitingAuth", "codeExpired", "authDenied", "reauthorize", "storageError"]) {
+  assert.ok(text("ru", key) && text("en", key));
+}
+assert.doesNotMatch(jsx, /accessToken|refreshToken|deviceCode|Authorization/);
 const deployed = path.join(process.env.CSII_USERDATAPATH || "", "Mods", "CS2TwitchCitizens.UI");
 if (process.env.CSII_USERDATAPATH) {
   const js = utf8.decode(fs.readFileSync(path.join(deployed, "CS2TwitchCitizens.UI.mjs")));
   const builtCss = utf8.decode(fs.readFileSync(path.join(deployed, "CS2TwitchCitizens.UI.css")));
+  assert.doesNotMatch(js, /\bIntl\b/, "Deployed UI bundle must not depend on Intl");
   for (const label of ["Взрослый", "Поиск зрителя...", "Найти в городе"]) {
     assert.ok(js.includes(label), `Missing RU text in bundle: ${label}`);
   }

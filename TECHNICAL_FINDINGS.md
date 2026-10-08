@@ -1,5 +1,11 @@
 # Technical findings — CS2 Twitch Citizens 0.3.0
 
+## v0.7.0 OAuth findings
+
+- Twitch's public Device Code Flow uses `POST /oauth2/device` with `client_id` and `scopes`, then `POST /oauth2/token` with the device code and device grant type. The public client does not need a client secret. Device responses supply `interval` and `expires_in`; the mod follows both. `GET /oauth2/validate` supplies the account user ID and login and confirms `user:read:chat`.
+- Public-client refresh tokens are single use and can expire after 30 days of inactivity. The controller serializes refresh work, stores each rotated refresh token with DPAPI CurrentUser, and retries transient failures with a finite backoff. EventSub's subscription condition uses the validated user ID for both `broadcaster_user_id` and `user_id`.
+- OAuth work runs outside ECS. `ViewerPanelUISystem` publishes only a sanitized auth view. The initial v0.7.0 attempt lacked access to the game's user environment and reported unavailable generator paths. A later audit verified `CSII_UNITYMODPROJECTPATH`, all Entities `1.3.10` generators, Burst `1.8.23`, ModPostProcessor, and the game assemblies. `Mod.props` reads several paths from the user environment, so `scripts/build-official.ps1` validates their process values and passes them as MSBuild properties. `ModPostProcessor.PathSet` additionally requires `CSII_UNITYVERSION` in the **user** environment; restoring it to the installed `2022.3.62f2` editor resolved its incomplete-toolchain error. Official Code Mod postprocessing, Burst for Windows/macOS/Linux, DeployWIP, and UI webpack installation passed. The deployed assemblies and UI banner were verified as v0.7.0. Runtime OAuth remains unverified.
+
 ## Environment
 
 - Investigated local assemblies in the installed game's `Cities2_Data/Managed` directory. No game DLL is stored in this repository. `Game.dll` SHA-256: `AAEE15C4FA41C130ABAA1183840667E4FAAE531D67E8A9FA7536618EFFA2F86A`; `Unity.Entities.dll` SHA-256: `07D9CB32BF935A88ECD5FE0BAFF31D2BC7E828F6DEA31619300A50DD9E2C2871`.

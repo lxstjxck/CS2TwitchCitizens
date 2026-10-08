@@ -13,6 +13,7 @@ namespace CS2TwitchCitizens.Mod
         private const string Group = "cs2twitchcitizens";
         private ValueBinding<string> _snapshot = null!;
         private ValueBinding<string> _focusResult = null!;
+        private ValueBinding<string> _auth = null!;
         private DateTime _nextRefresh;
         private int _focusSequence;
         private string? _pendingViewerId;
@@ -25,6 +26,13 @@ namespace CS2TwitchCitizens.Mod
             _focusResult = new ValueBinding<string>(Group, "focusResult", string.Empty, null, null);
             AddBinding(_snapshot);
             AddBinding(_focusResult);
+            _auth = new ValueBinding<string>(Group, "auth", new CS2TwitchCitizens.Twitch.TwitchAuthView().ToJson(), null, null);
+            AddBinding(_auth);
+            AddBinding(new TriggerBinding<string>(Group, "connectTwitch", _ => Mod.Connection?.Connect(), null));
+            AddBinding(new TriggerBinding<string>(Group, "cancelTwitch", _ => Mod.Connection?.Cancel(), null));
+            AddBinding(new TriggerBinding<string>(Group, "reconnectTwitch", _ => Mod.Connection?.Reconnect(), null));
+            AddBinding(new TriggerBinding<string>(Group, "disconnectTwitch", _ => Mod.Connection?.Disconnect(), null));
+            AddBinding(new TriggerBinding<string>(Group, "openTwitchVerification", _ => Mod.Connection?.OpenVerification(), null));
             AddBinding(new TriggerBinding<string>(Group, "focusCitizen", Focus, null));
             AddBinding(new TriggerBinding<string>(Group, "followCitizen", Follow, null));
             AddBinding(new TriggerBinding<string>(Group, "stopFollowing", StopFollowing, null));
@@ -48,9 +56,11 @@ namespace CS2TwitchCitizens.Mod
             var gameLoaded = GameManager.instance.gameMode == GameMode.Game;
             var bindingSystem = gameLoaded ? World.GetExistingSystemManaged<CitizenBindingSystem>() : null;
             var viewers = bindingSystem?.GetAllBindings() ?? Array.Empty<ViewerCitizenInfo>();
-            var snapshot = ViewerPanelSnapshot.Create(Mod.ConnectionStatus.ToString(),
-                Mod.ChannelId, gameLoaded, viewers);
+            var auth = Mod.Connection?.View ?? new CS2TwitchCitizens.Twitch.TwitchAuthView();
+            var snapshot = ViewerPanelSnapshot.Create(auth.EventSubStatus,
+                Mod.Connection?.UserId ?? string.Empty, gameLoaded, viewers);
             _snapshot.Update(snapshot.ToJson());
+            _auth.Update(auth.ToJson());
         }
 
         private void Focus(string viewerId)

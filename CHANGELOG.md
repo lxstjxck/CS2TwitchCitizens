@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 — Twitch OAuth and in-game connection (integration pending)
+
+- Added Twitch public-client Device Code authorization in C#, with a single cancellable session, `user:read:chat`, code expiry, Twitch polling interval, denial and rate-limit handling, token validation, refresh rotation, and restart recovery.
+- Added Windows DPAPI CurrentUser credential storage outside city saves. The old `twitch.config.json` is detected but its plaintext token is neither used nor deleted. The public Client ID can be embedded at build time; no Client Secret is included.
+- Connected UI actions for authorization, browser activation, cancellation, reconnect and disconnect, with RU/EN status text. EventSub still receives `channel.chat.message` through the existing command queue. Disconnect leaves city bindings and history intact.
+- OAuth mock HTTP and DPAPI checks, previous C# checks, UI checks, and typecheck passed. The official Code Mod build now passes Entities generation, ModPostProcessor, Burst for Windows/macOS/Linux, and DeployWIP with zero C# warnings/errors; webpack installed the UI with the existing Sass deprecation warning. The missing `CSII_UNITYVERSION` user variable was restored to the installed Unity `2022.3.62f2`, and `scripts/build-official.ps1` validates paths and deployed versions. No real Client ID was supplied for this build, and in-game behavior remains unverified.
+
+## 0.6.4.1 — History date formatting compatibility
+
+- Replaced `Intl.DateTimeFormat` in the UI history date formatter with static Russian and English month names. The game UI runtime lacks `Intl`, which caused `ReferenceError: Intl is not defined` when opening life history. Calendar validation and the localized No data fallback remain in place.
+- Added checks for one and multiple lives, invalid dates, RU/EN output, and rendering logic with `Intl` unavailable. The UI bundle was rebuilt and installed locally; confirmation that the interface remains visible requires a running-game test.
+
 ## 0.6.4 — Viewer life history UI
 
 - Added a current-life DTO to the existing city journal projection. The panel now shows current and completed lives newest first inside the selected viewer card, with saved dates, age, home, workplace, and a verified death cause when available. Missing stays distinct from death. The city-save format remains version 1.

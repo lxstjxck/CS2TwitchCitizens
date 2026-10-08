@@ -7,3 +7,4 @@ Library/
 twitch.config.json
 node_modules/
 .npm-cache/
+artifacts/

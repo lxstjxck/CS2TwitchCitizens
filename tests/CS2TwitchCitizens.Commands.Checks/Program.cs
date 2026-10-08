@@ -2,6 +2,8 @@ using CS2TwitchCitizens.Commands;
 using CS2TwitchCitizens.Twitch;
 using System.Text.Json;
 
+await OAuthChecks.Run();
+
 var now = DateTimeOffset.Parse("2026-10-04T00:00:00+03:00");
 foreach (var verb in new[] { "!join", "!me", "!find", "!history" })
 {

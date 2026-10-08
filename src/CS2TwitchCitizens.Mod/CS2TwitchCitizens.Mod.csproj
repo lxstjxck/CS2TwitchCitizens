@@ -4,7 +4,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
-    <Version>0.6.4</Version>
+    <Version>0.7.0</Version>
+    <TwitchClientId Condition="'$(TwitchClientId)' == ''">$([System.Environment]::GetEnvironmentVariable('CS2TWITCHCITIZENS_CLIENT_ID'))</TwitchClientId>
     <ManagedPath Condition="'$(ManagedPath)' == '' and '$(CS2ManagedDir)' != ''">$(CS2ManagedDir)</ManagedPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == '' and Exists('$(ManagedPath)/../Content/Game/.ModdingToolchain/Mod.props')">$(ManagedPath)/../Content/Game/.ModdingToolchain</CS2ToolPath>
@@ -20,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="../CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
     <ProjectReference Include="../CS2TwitchCitizens.Twitch/CS2TwitchCitizens.Twitch.csproj" />
+    <Reference Include="System.Net.Http"><Private>false</Private></Reference>
     <Reference Include="Game"><HintPath>$(ManagedPath)/Game.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Entities"><HintPath>$(ManagedPath)/Unity.Entities.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Unity.Collections"><HintPath>$(ManagedPath)/Unity.Collections.dll</HintPath><Private>false</Private></Reference>
@@ -30,4 +32,9 @@
     <Reference Include="Colossal.Logging"><HintPath>$(ManagedPath)/Colossal.Logging.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="Colossal.UI.Binding"><HintPath>$(ManagedPath)/Colossal.UI.Binding.dll</HintPath><Private>false</Private></Reference>
   </ItemGroup>
+  <Target Name="GenerateTwitchClientId" BeforeTargets="CoreCompile">
+    <Error Condition="'$(TwitchClientId)' != '' and !$([System.Text.RegularExpressions.Regex]::IsMatch('$(TwitchClientId)', '^[a-zA-Z0-9]+$'))" Text="TwitchClientId must contain only letters and digits." />
+    <WriteLinesToFile File="$(IntermediateOutputPath)TwitchClientId.g.cs" Lines="namespace CS2TwitchCitizens.Mod { internal static class TwitchClientId { internal const string Value = &quot;$(TwitchClientId)&quot;%3B } }" Overwrite="true" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)TwitchClientId.g.cs" /></ItemGroup>
+  </Target>
 </Project>

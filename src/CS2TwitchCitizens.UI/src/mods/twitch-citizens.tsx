@@ -24,10 +24,18 @@ type Viewer = {
 };
 type Snapshot = { twitchStatus: string; channelId: string; gameLoaded: boolean; viewers: Viewer[] };
 type FocusFeedback = { viewerId: string; result: string; sequence: number };
+type Auth = { state: string; login: string; displayName: string; userCode: string; verificationUri: string;
+  expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean };
 
 const group = "cs2twitchcitizens";
 const snapshotBinding = bindValue<string>(group, "snapshot", "{}");
 const focusResultBinding = bindValue<string>(group, "focusResult", "");
+const authBinding = bindValue<string>(group, "auth", "{}");
+const connectTwitch = bindTriggerWithArgs<[string]>(group, "connectTwitch");
+const cancelTwitch = bindTriggerWithArgs<[string]>(group, "cancelTwitch");
+const reconnectTwitch = bindTriggerWithArgs<[string]>(group, "reconnectTwitch");
+const disconnectTwitch = bindTriggerWithArgs<[string]>(group, "disconnectTwitch");
+const openTwitchVerification = bindTriggerWithArgs<[string]>(group, "openTwitchVerification");
 const focusCitizen = bindTriggerWithArgs<[string]>(group, "focusCitizen");
 const followCitizen = bindTriggerWithArgs<[string]>(group, "followCitizen");
 const stopFollowing = bindTriggerWithArgs<[string]>(group, "stopFollowing");
@@ -51,6 +59,16 @@ function parseSnapshot(value: string): Snapshot {
 function parseFeedback(value: string): FocusFeedback | null {
   try { return JSON.parse(value) as FocusFeedback; }
   catch { return null; }
+}
+function parseAuth(value: string): Auth {
+  try {
+    const data = JSON.parse(value) as Partial<Auth>;
+    return { state: data.state || "Disconnected", login: data.login || "", displayName: data.displayName || "",
+      userCode: data.userCode || "", verificationUri: data.verificationUri || "",
+      expiresAt: data.expiresAt || 0, error: data.error || "",
+      eventSubStatus: data.eventSubStatus || "Disabled", legacyConfig: !!data.legacyConfig };
+  } catch { return { state: "Disconnected", login: "", displayName: "", userCode: "", verificationUri: "",
+    expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false }; }
 }
 
 function displayName(viewer: Viewer, locale: Locale): string {
@@ -81,6 +99,8 @@ export const TwitchCitizensPanel = () => {
   const snapshotJson = useValue(snapshotBinding);
   const snapshot = useMemo(() => parseSnapshot(snapshotJson), [snapshotJson]);
   const feedbackJson = useValue(focusResultBinding);
+  const authJson = useValue(authBinding);
+  const auth = useMemo(() => parseAuth(authJson), [authJson]);
   const feedback = useMemo(() => parseFeedback(feedbackJson), [feedbackJson]);
   const viewers = useMemo(() => filterViewers(snapshot.viewers, search), [snapshot.viewers, search]);
   const selected = selectedViewer(viewers, selectedId);
@@ -122,6 +142,35 @@ export const TwitchCitizensPanel = () => {
         {tab === "settings" ? <div className={styles.settings}>
           <div className={styles.settingsRow}><span>{text(locale, "connection")}</span><strong>{connectionText(locale, snapshot.twitchStatus)}</strong></div>
           <div className={styles.settingsRow}><span>{text(locale, "channel")}</span><strong className={styles.longValue}>{snapshot.channelId || text(locale, "channelMissing")}</strong></div>
+          {auth.legacyConfig && <p className={styles.helper}>{text(locale, "legacyNotice")}</p>}
+          {(auth.state === "Disconnected" || auth.state === "Error") && <>
+            {auth.state === "Error" && <p className={styles.authError}>{text(locale, auth.error === "ClientIdMissing" ? "clientIdMissing" :
+              auth.error === "StorageError" ? "storageError" : auth.error === "CodeExpired" ? "codeExpired" :
+              auth.error === "Denied" ? "authDenied" : auth.error === "Reauthorize" ? "reauthorize" : "networkError")}</p>}
+            <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+              onSelect={() => connectTwitch("")}>{text(locale, "connectTwitch")}</Button>
+          </>}
+          {(auth.state === "Requesting" || auth.state === "Pending" || auth.state === "Restoring") && <>
+            <p className={styles.helper}>{text(locale, auth.state === "Pending" ? "waitingAuth" : "requestingAuth")}</p>
+            {auth.state === "Pending" && <>
+              <strong className={styles.userCode}>{auth.userCode}</strong>
+              <span className={styles.longValue}>{auth.verificationUri}</span>
+              <span>{text(locale, "codeExpires")}: {Math.max(0, Math.ceil(auth.expiresAt - Date.now() / 1000))} s</span>
+              <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+                onSelect={() => openTwitchVerification("")}>{text(locale, "openTwitch")}</Button>
+            </>}
+            {auth.state !== "Restoring" && <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+              onSelect={() => cancelTwitch("")}>{text(locale, "cancelAuth")}</Button>}
+          </>}
+          {auth.state === "Connected" && <>
+            <div className={styles.settingsRow}><span>{text(locale, "login")}</span><strong>{auth.login}</strong></div>
+            {auth.displayName && <div className={styles.settingsRow}><span>{text(locale, "displayName")}</span><strong>{auth.displayName}</strong></div>}
+            <div className={styles.settingsRow}><span>EventSub</span><strong>{connectionText(locale, auth.eventSubStatus)}</strong></div>
+            <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+              onSelect={() => reconnectTwitch("")}>{text(locale, "reconnectTwitch")}</Button>
+            <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+              onSelect={() => disconnectTwitch("")}>{text(locale, "disconnectTwitch")}</Button>
+          </>}
           <div className={styles.settingsRow}><span>{text(locale, "language")}</span>
             <div className={styles.languageButtons}>
               <Button variant="default" selected={locale === "ru"} data-selected={locale === "ru"}

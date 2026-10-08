@@ -102,6 +102,9 @@
 .lifePill[data-life="Missing"] { background: #62543b; color: #f1d38f; }
 
 .card, .settings { display: flex; flex-direction: column; gap: 11px; min-width: 0; box-sizing: border-box; padding: 12px; border-radius: 7px; background: rgba(43, 69, 91, .84); }
+.authButton { width: 100%; }
+.authError { color: #ffacaf; margin: 0; }
+.userCode { font-size: 24px; letter-spacing: 3px; color: #a9eff8; text-align: center; }
 .cardHeader { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding-bottom: 11px; border-bottom: 1px solid rgba(175, 205, 222, .14); }
 .cardIdentity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .cardIdentity strong { font-size: 16px; line-height: 1.2; }

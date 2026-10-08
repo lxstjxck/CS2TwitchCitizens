@@ -175,7 +175,7 @@ public sealed class TwitchEventSubService : IDisposable
                 if (envelope.Metadata?.MessageType != "notification")
                     continue;
 
-                if (EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command) &&
+                if (!cancellationToken.IsCancellationRequested && EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command) &&
                     _messageIds.TryAdd(envelope.Metadata.MessageId))
                 {
                     _queue.Enqueue(command!);
@@ -237,6 +237,8 @@ public sealed class TwitchEventSubService : IDisposable
                 request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false))
                 {
+                    if (response.StatusCode == HttpStatusCode.Unauthorized)
+                        throw new AuthenticationException("EventSub subscription unauthorized.");
                     if (response.StatusCode != HttpStatusCode.Accepted)
                     {
                         _log($"[CS2TwitchCitizens] Twitch chat subscription failed HTTP {(int)response.StatusCode}");
