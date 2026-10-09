@@ -6,6 +6,12 @@ public sealed class CommandGate
     private readonly Dictionary<(string Viewer, string Verb), DateTimeOffset> _perCommand = new();
     private readonly Dictionary<string, DateTimeOffset> _shared = new(StringComparer.Ordinal);
     public void Clear() { _perCommand.Clear(); _shared.Clear(); }
+    public void ForgetViewer(string viewerId)
+    {
+        _shared.Remove(viewerId);
+        foreach (var key in _perCommand.Keys.Where(key => key.Viewer == viewerId).ToArray())
+            _perCommand.Remove(key);
+    }
     public bool TryAdmit(TwitchCommand command, CommandSettings settings)
     {
         var options = settings.For(command.Command);

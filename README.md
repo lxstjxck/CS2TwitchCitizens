@@ -1,6 +1,6 @@
 # CS2 Twitch Citizens
 
-CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.8.3 reorganizes the Commands tab with compact basic settings, expandable advanced settings, contextual help, and a demonstration reply. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the v0.8.3 UI still needs an in-game check.
+CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.8.6 displays conditional character years using an explicit mod model of one NPC life day per year. This is separate from the city calendar. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; v0.8.6 still needs an in-game check.
 
 Open the in-game **Commands** tab to enable commands, set viewer cooldowns and permissions, select reply fields, choose RU/EN replies, and preview a sample. Settings apply immediately and persist globally in `%LOCALAPPDATA%/CS2TwitchCitizens/commands.json`, separate from city saves and encrypted Twitch credentials. See [command fields and limits](COMMAND_FIELDS.md) for the supported field matrix.
 
@@ -12,7 +12,7 @@ The project owner must [register one Twitch application](https://dev.twitch.tv/d
 
 Open **Twitch Citizens → Settings → Connect Twitch**. Copy the displayed code and choose **Open Twitch** to authorize in the system browser. After confirmation, the mod validates the user ID and starts EventSub for that account's own channel. Use **Reconnect** to retry EventSub and **Disconnect Twitch** to stop it and remove local credentials. Disconnect does not remove residents, bindings, or life history from city saves. Loading another city keeps the Twitch account connection and restores that city's bindings.
 
-The mod requests only `user:read:chat`. The settings panel never receives access tokens, refresh tokens, device codes, or Authorization headers. It shows the one-time user code, login, and connection status.
+The mod requests `user:read:chat` and `user:write:chat`. The settings panel never receives access tokens, refresh tokens, device codes, or Authorization headers. It shows the one-time user code, login, connection status, and chat sending permission.
 
 ## Local data and migration
 

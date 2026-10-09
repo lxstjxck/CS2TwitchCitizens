@@ -15,7 +15,8 @@ function loadSource(name) {
 const { filterViewers } = loadSource("viewer-search");
 const { selectedViewer, canLocate, isCameraError, lifeHistory } = loadSource("viewer-view-model");
 const { detectLocale, ageText, lifeText, connectionText, focusText, lifeCountText,
-  lifeNumberText, viewerMetaText, viewerCountText, text, dateText, valueText } = loadSource("ui-text");
+  lifeNumberText, viewerMetaText, viewerCountText, text, dateText, valueText,
+  ageDetailText, missingReasonText, showLegacyNotice } = loadSource("ui-text");
 
 const viewer = (id, extras = {}) => ({
   twitchUserId: id, login: `login${id}`, displayName: `Viewer ${id}`,
@@ -114,12 +115,45 @@ assert.equal(viewerMetaText("ru", "", 1), "Жизнь №1");
 assert.equal(viewerMetaText("ru", "Adult", 0), "Взрослый");
 assert.equal(viewerMetaText("ru", "", 0), "");
 assert.equal(viewerMetaText("ru", "undefined", 0), "");
+assert.equal(ageDetailText("en", "Adult", 36), "36 years old");
+assert.match(text("ru", "ageModelHelp"), /Один день жизни.*одному году/);
+assert.match(text("en", "ageModelHelp"), /unrelated to the city calendar/);
+for (const [days, expected] of [[0, "0 лет"], [1, "1 год"], [2, "2 года"],
+  [5, "5 лет"], [21, "21 год"], [36, "36 лет"], [71, "71 год"],
+  [84, "84 года"], [100, "100 лет"]])
+  assert.equal(ageDetailText("ru", "Adult", days), expected);
+assert.equal(ageDetailText("en", "Adult", undefined), "Adult");
+assert.equal(ageDetailText("en", "Adult", -1), "Adult");
+assert.equal(text("en", "inTransport"), "In transport");
+assert.equal(text("ru", "inTransport"), "В транспорте");
+assert.match(viewerMetaText("ru", "Adult", 2, 36), /36/);
+for (const locale of ["ru", "en"]) {
+  for (const reason of ["EntityAbsent", "EntityDeleted", "CitizenComponentMissing", "UnresolvedBinding", ""]) {
+    assert.ok(missingReasonText(locale, reason).length > 20);
+    assert.match(missingReasonText(locale, reason), locale === "ru" ? /смерт|история/i : /death|history/i);
+  }
+}
+assert.equal(showLegacyNotice(true, true, "Connected"), false);
+assert.equal(showLegacyNotice(true, false, "Disconnected"), true);
+assert.equal(showLegacyNotice(false, true, "Connected"), false);
+assert.equal(showLegacyNotice(false, false, "Disconnected"), false);
+assert.equal(showLegacyNotice(true, true, "Disconnected"), false);
+assert.equal(showLegacyNotice(true, false, "Connecting"), false);
 assert.equal(text("ru", "search"), "Поиск зрителя...");
 assert.equal(text("en", "search"), "Search viewers...");
 assert.equal(viewerCountText("en", 100), "100 viewers");
 
 const css = fs.readFileSync(path.join(__dirname, "../src/mods/twitch-citizens.module.scss"), "utf8");
 const jsx = fs.readFileSync(path.join(__dirname, "../src/mods/twitch-citizens.tsx"), "utf8");
+assert.match(jsx, /showLegacyNotice\(auth\.legacyConfig, auth\.modernCredentials, auth\.state\)/);
+assert.match(jsx, /missingHelp\("row:"/);
+assert.doesNotMatch(jsx, /missingHelp\("card:"/);
+assert.match(jsx, /confirmAction === "unbind"/);
+assert.match(jsx, /deleteViewer\(selected\.twitchUserId\)/);
+assert.doesNotMatch(jsx, /brandGlyph.*TC/);
+assert.match(jsx, /className=\{styles\.nameLabel\}>\{text\(locale, "name"\)\}:/);
+assert.match(css, /\.nameLabel\s*\{[^}]*white-space:\s*nowrap/s);
+assert.match(css, /\.nameValue\s*\{[^}]*overflow-wrap:\s*break-word/s);
 const bindings = fs.readFileSync(path.join(__dirname, "../../CS2TwitchCitizens.Mod/ViewerPanelUISystem.cs"), "utf8");
 assert.match(jsx, /bindTriggerWithArgs<\[string\]>\(group, "reauthorizeTwitch"\)/);
 assert.match(jsx, /auth\.writePermission === "AuthorizationRequired" && auth\.state === "Connected"/);

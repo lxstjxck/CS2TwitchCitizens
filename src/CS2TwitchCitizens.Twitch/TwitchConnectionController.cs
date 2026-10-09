@@ -20,6 +20,7 @@ public sealed class TwitchAuthView
     [DataMember(Name = "writePermission")] public string WritePermission { get; set; } = "AuthorizationRequired";
     [DataMember(Name = "reauthorizationState")] public string ReauthorizationState { get; set; } = "Idle";
     [DataMember(Name = "legacyConfig")] public bool LegacyConfig { get; set; }
+    [DataMember(Name = "modernCredentials")] public bool ModernCredentials { get; set; }
     public string ToJson()
     {
         using var stream = new MemoryStream();
@@ -67,7 +68,7 @@ public sealed class TwitchConnectionController : IDisposable
         get { lock (_gate) return new TwitchAuthView {
             State = _view.State, Login = _view.Login, DisplayName = _view.DisplayName, UserCode = _view.UserCode,
             VerificationUri = _view.VerificationUri, ExpiresAt = _view.ExpiresAt,
-            Error = _view.Error, LegacyConfig = _view.LegacyConfig,
+            Error = _view.Error, LegacyConfig = _view.LegacyConfig, ModernCredentials = _view.ModernCredentials,
             WritePermission = _view.WritePermission, ReauthorizationState = _view.ReauthorizationState,
             EventSubStatus = _eventSub?.Status.ToString() ?? "Disabled"
         }; }
@@ -76,9 +77,11 @@ public sealed class TwitchConnectionController : IDisposable
 
     public void Start()
     {
+        lock (_gate) _view.ModernCredentials = _store.Exists;
         if (!string.IsNullOrWhiteSpace(_clientId))
         {
-            if (_store.Exists) lock (_gate) { _view.State = "Restoring"; _view.WritePermission = "Checking"; }
+            if (_store.Exists) lock (_gate) { _view.State = "Restoring"; _view.WritePermission = "Checking";
+            }
         }
         _maintenance = Task.Run(() => MaintainAsync(_lifetime.Token));
         _replyWorker = Task.Run(() => SendRepliesAsync(_lifetime.Token));
@@ -227,6 +230,7 @@ public sealed class TwitchConnectionController : IDisposable
                         if (reauthorize && _credentials != null && identity.UserId != _credentials.UserId)
                             throw new UnauthorizedAccessException("Twitch identity changed.");
                         _store.Save(credentials);
+                        _view.ModernCredentials = true;
                         Activate(credentials, "Allowed");
                     } }
                     finally { _refreshGate.Release(); }
@@ -368,7 +372,8 @@ public sealed class TwitchConnectionController : IDisposable
                     if (identity.UserId != saved.UserId) throw new UnauthorizedAccessException("Twitch identity changed.");
                     current = MakeCredentials(token, identity);
                     current.DisplayName = saved.DisplayName;
-                    lock (_gate) { if (generation != _generation || _disposed) return; _store.Save(current); }
+                    lock (_gate) { if (generation != _generation || _disposed) return; _store.Save(current);
+                        _view.ModernCredentials = true; }
                 }
                 else
                 {
@@ -380,7 +385,8 @@ public sealed class TwitchConnectionController : IDisposable
                         if (identity.UserId != saved.UserId) throw new UnauthorizedAccessException("Twitch identity changed.");
                         current = MakeCredentials(token, identity);
                         current.DisplayName = saved.DisplayName;
-                        lock (_gate) { if (generation != _generation || _disposed) return; _store.Save(current); }
+                        lock (_gate) { if (generation != _generation || _disposed) return; _store.Save(current);
+                            _view.ModernCredentials = true; }
                     }
                     if (identity.UserId != saved.UserId) throw new UnauthorizedAccessException("Twitch identity changed.");
                 }
@@ -440,7 +446,8 @@ public sealed class TwitchConnectionController : IDisposable
             _eventSub?.Dispose(); _eventSub = null; _view = new TwitchAuthView { LegacyConfig = _view.LegacyConfig }; }
         _queue.Clear();
         try { _store.Delete(); }
-        catch (Exception ex) { _log("[CS2TwitchCitizens] Twitch credential removal failed: " + ex.GetType().Name);
+        catch (Exception ex) { lock (_gate) _view.ModernCredentials = true;
+            _log("[CS2TwitchCitizens] Twitch credential removal failed: " + ex.GetType().Name);
             SetError("StorageError"); }
         if (saved != null) _ = Task.Run(async () => { try { await _oauth.RevokeAsync(_clientId, saved.AccessToken, _lifetime.Token).ConfigureAwait(false); }
             catch (Exception ex) { _log("[CS2TwitchCitizens] Twitch revocation failed: " + ex.GetType().Name); } });

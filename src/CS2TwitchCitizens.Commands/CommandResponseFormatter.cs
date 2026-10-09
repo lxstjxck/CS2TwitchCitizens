@@ -12,8 +12,19 @@ public static class CommandResponseFormatter
         if (info == null || info.TotalLives == 0)
             return Limit(ru ? "Сначала напишите !join." : "Use !join first.", options.MaxResponseLength);
         var fields = new List<string>();
+        var locationWritten = false;
         foreach (var id in options.SelectedFields)
         {
+            if (id == "locationType" || id == "currentBuilding")
+            {
+                if (locationWritten) continue;
+                locationWritten = true;
+                var location = Location(info, ru);
+                if (location.Length == 0 && settings.MissingData == "omit") continue;
+                fields.Add((ru ? "местоположение" : "location") + ": " +
+                    (location.Length == 0 ? (ru ? "неизвестно" : "unknown") : location));
+                continue;
+            }
             var value = Value(id, info, options, ru);
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -50,18 +61,27 @@ public static class CommandResponseFormatter
         switch (id)
         {
             case "name": return info.CitizenName;
-            case "ageGroup": return TranslateAge(info.Age, ru);
+            case "ageGroup":
+                var ageGroup = TranslateAge(info.Age, ru);
+                var displayedAge = ModAgeModel.Format(info.AgeDays, ru);
+                return displayedAge.Length > 0 ? displayedAge : ageGroup;
             case "status": return TranslateStatus(info.CurrentLifeStatus, ru);
-            case "home": return info.Home;
+            case "home": return info.HomeAddress;
             case "householdSize": return info.HouseholdSize;
             case "employment": return info.Employment == "yes" ? (ru ? "работает" : "employed") :
-                info.Employment == "no" ? (ru ? "не работает" : "not employed") : "";
-            case "work": return info.Workplace;
+                info.Employment == "student" ? (ru ? "учится" : "student") : "";
+            case "work": return info.Workplace.Length > 0
+                ? info.Workplace + (info.WorkAddress.Length > 0 ? ", " + info.WorkAddress : "")
+                : info.Employment == "yes" ? (ru ? "работает" : "employed") :
+                    info.Employment == "student" ? (ru ? "учится" : "student") : "";
             case "school": return info.School;
-            case "currentBuilding": return info.CurrentBuilding;
+            case "currentBuilding": return info.CurrentBuilding.Length == 0 ? info.CurrentAddress :
+                info.CurrentAddress.Length == 0 ? info.CurrentBuilding :
+                info.CurrentBuilding + ", " + info.CurrentAddress;
             case "locationType": return info.LocationType switch {
                 "home" => ru ? "дома" : "home", "work" => ru ? "на работе" : "at work",
-                "building" => ru ? "в здании" : "in a building", _ => "" };
+                "building" => ru ? "в здании" : "in a building",
+                "transport" => ru ? "в транспорте" : "in transport", _ => "" };
             case "coordinates": return info.PositionAvailable && info.Position.HasValue
                 ? string.Format(CultureInfo.InvariantCulture, "{0:0}, {1:0}, {2:0}", info.Position.Value.X, info.Position.Value.Y, info.Position.Value.Z) : "";
             case "totalLives": return info.TotalLives.ToString(CultureInfo.InvariantCulture);
@@ -77,6 +97,22 @@ public static class CommandResponseFormatter
             default: return "";
         }
     }
+    private static string Location(ViewerCitizenInfo info, bool ru)
+    {
+        if (!info.IsValid) return "";
+        switch (info.LocationType)
+        {
+            case "home": return (ru ? "дома" : "at home") +
+                (info.HomeAddress.Length > 0 ? " — " + info.HomeAddress : "");
+            case "work": return (ru ? "на работе" : "at work") +
+                (info.Workplace.Length > 0 ? " — " + info.Workplace : "") +
+                (info.CurrentAddress.Length > 0 ? ", " + info.CurrentAddress : "");
+            case "building": return string.Join(" — ", new[] { info.CurrentBuilding, info.CurrentAddress }
+                .Where(value => !string.IsNullOrWhiteSpace(value)));
+            case "transport": return ru ? "в транспорте" : "in transport";
+            default: return "";
+        }
+    }
     private static string ShortDate(string? value) =>
         DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
             ? date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "";
@@ -85,7 +121,7 @@ public static class CommandResponseFormatter
         "Adult" => ru ? "взрослый" : "adult", "Elderly" => ru ? "пожилой" : "elderly", _ => "" };
     private static string TranslateStatus(string value, bool ru) => value switch {
         "Active" => ru ? "жив" : "alive", "Deceased" => ru ? "умер" : "deceased",
-        "Missing" => ru ? "отсутствует" : "missing", _ => "" };
+        "Missing" => ru ? "отсутствует" : "missing", "Unbound" => ru ? "отвязан" : "unbound", _ => "" };
     private static string Label(string id, bool ru) => id switch {
         "name" => ru ? "житель" : "citizen", "ageGroup" => ru ? "возраст" : "age",
         "status" => ru ? "статус" : "status", "home" => ru ? "дом" : "home",

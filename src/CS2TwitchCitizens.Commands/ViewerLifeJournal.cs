@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace CS2TwitchCitizens.Commands;
 
-public enum ViewerLifeStatus { Active, Deceased, Missing }
+public enum ViewerLifeStatus { Active, Deceased, Missing, Unbound }
 
 /// <summary>Plain city-save data. Completed lives retain their snapshot without an Entity key.</summary>
 public sealed class ViewerLife<TKey> where TKey : notnull
@@ -16,8 +16,11 @@ public sealed class ViewerLife<TKey> where TKey : notnull
     public string EndGameDate { get; set; } = string.Empty;
     public ViewerLifeStatus Status { get; set; }
     public string LastKnownAge { get; set; } = string.Empty;
+    public int? LastKnownAgeDays { get; set; }
     public string LastKnownWorkplace { get; set; } = string.Empty;
     public string LastKnownHome { get; set; } = string.Empty;
+    public string LastKnownHomeAddress { get; set; } = string.Empty;
+    public string MissingReason { get; set; } = string.Empty;
     public string CauseOfDeath { get; set; } = string.Empty;
 }
 
@@ -83,7 +86,7 @@ public sealed class ViewerLifeJournal<TKey> where TKey : notnull
         return true;
     }
 
-    public bool MarkMissing(string viewerId)
+    public bool MarkMissing(string viewerId, string reason = "UnresolvedBinding")
     {
         if (!TryGet(viewerId, out var account) || account!.Current?.Status != ViewerLifeStatus.Active)
             return false;
@@ -91,7 +94,30 @@ public sealed class ViewerLifeJournal<TKey> where TKey : notnull
         _claimed.Remove(life!.CitizenKey);
         life.CitizenKey = default!;
         life.Status = ViewerLifeStatus.Missing;
+        life.MissingReason = reason;
         return true;
+    }
+
+    public bool Unbind(string viewerId, string gameDate)
+    {
+        if (!TryGet(viewerId, out var account) || account!.Current == null ||
+            (account.Current.Status != ViewerLifeStatus.Active && account.Current.Status != ViewerLifeStatus.Missing))
+            return false;
+        var life = account.Current;
+        if (life.Status == ViewerLifeStatus.Active) _claimed.Remove(life.CitizenKey);
+        life.CitizenKey = default!;
+        life.Status = ViewerLifeStatus.Unbound;
+        life.EndGameDate = gameDate;
+        life.MissingReason = string.Empty;
+        return true;
+    }
+
+    public bool Delete(string viewerId)
+    {
+        if (!_accounts.TryGetValue(viewerId, out var account)) return false;
+        if (account.Current?.Status == ViewerLifeStatus.Active)
+            _claimed.Remove(account.Current.CitizenKey);
+        return _accounts.Remove(viewerId);
     }
 
     public void UpdateIdentity(string viewerId, string login, string displayName)
@@ -101,17 +127,21 @@ public sealed class ViewerLifeJournal<TKey> where TKey : notnull
         account.DisplayName = displayName;
     }
 
-    public void UpdateSnapshot(string viewerId, string age, string home, string workplace)
+    public void UpdateSnapshot(string viewerId, string age, string home, string workplace,
+        int? ageDays = null, string homeAddress = "")
     {
         if (!TryGet(viewerId, out var account) || account!.Current?.Status != ViewerLifeStatus.Active)
             return;
         var life = account.Current!;
         life.LastKnownAge = age;
+        life.LastKnownAgeDays = ageDays;
         life.LastKnownHome = home;
+        life.LastKnownHomeAddress = homeAddress;
         life.LastKnownWorkplace = workplace;
     }
 
-    public void Restore(IEnumerable<ViewerLifeAccount<TKey>> source, Func<TKey, bool> isValid)
+    public void Restore(IEnumerable<ViewerLifeAccount<TKey>> source, Func<TKey, bool> isValid,
+        Func<TKey, string>? invalidReason = null)
     {
         var accounts = new Dictionary<string, ViewerLifeAccount<TKey>>(StringComparer.Ordinal);
         var claimed = new HashSet<TKey>();
@@ -126,13 +156,15 @@ public sealed class ViewerLifeJournal<TKey> where TKey : notnull
                 var life = account.Lives[i];
                 if (!Guid.TryParseExact(life.LifeId, "N", out _) || !lifeIds.Add(life.LifeId) ||
                     !Enum.IsDefined(typeof(ViewerLifeStatus), life.Status) ||
-                    (i < account.Lives.Count - 1 && life.Status != ViewerLifeStatus.Deceased))
+                    (i < account.Lives.Count - 1 && life.Status != ViewerLifeStatus.Deceased &&
+                        life.Status != ViewerLifeStatus.Unbound))
                     throw new FormatException("Invalid life history.");
                 if (life.Status == ViewerLifeStatus.Active)
                 {
                     if (!isValid(life.CitizenKey))
                     {
                         life.Status = ViewerLifeStatus.Missing;
+                        life.MissingReason = invalidReason?.Invoke(life.CitizenKey) ?? "UnresolvedBinding";
                         life.CitizenKey = default!;
                     }
                     else if (!claimed.Add(life.CitizenKey))

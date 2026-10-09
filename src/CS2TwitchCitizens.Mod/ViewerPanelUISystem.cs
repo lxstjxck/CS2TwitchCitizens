@@ -46,6 +46,8 @@ namespace CS2TwitchCitizens.Mod
             AddBinding(new TriggerBinding<string>(Group, "focusCitizen", Focus, null));
             AddBinding(new TriggerBinding<string>(Group, "followCitizen", Follow, null));
             AddBinding(new TriggerBinding<string>(Group, "stopFollowing", StopFollowing, null));
+            AddBinding(new TriggerBinding<string>(Group, "unbindViewer", UnbindViewer, null));
+            AddBinding(new TriggerBinding<string>(Group, "deleteViewer", DeleteViewer, null));
             Mod.Log.Info("[CS2TwitchCitizens] ViewerPanelUISystem.OnCreate");
         }
 
@@ -118,6 +120,26 @@ namespace CS2TwitchCitizens.Mod
             _pendingViewerId = null;
             PublishResult(viewerId, result);
             Mod.Log.Info($"[CS2TwitchCitizens] UI StopFollowing viewer={viewerId} result={result}");
+        }
+
+        private void UnbindViewer(string viewerId)
+        {
+            if (GameManager.instance.gameMode != GameMode.Game) return;
+            if (World.GetExistingSystemManaged<CitizenBindingSystem>()?.UnbindViewer(viewerId) == true)
+            {
+                _pendingViewerId = null;
+                _nextRefresh = DateTime.MinValue;
+            }
+        }
+
+        private void DeleteViewer(string viewerId)
+        {
+            if (GameManager.instance.gameMode != GameMode.Game) return;
+            if (World.GetExistingSystemManaged<CitizenBindingSystem>()?.DeleteViewer(viewerId) == true)
+            {
+                _pendingViewerId = null;
+                _nextRefresh = DateTime.MinValue;
+            }
         }
 
         private void PublishResult(string viewerId, CitizenFocusStatus result) =>

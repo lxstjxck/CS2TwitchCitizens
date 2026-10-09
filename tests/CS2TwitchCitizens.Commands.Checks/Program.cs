@@ -40,9 +40,26 @@ Check(gate.TryAdmit(new TwitchCommand("viewer-c", "", "Viewer", "!find", "", gat
 defaults.Find.Permission = "moderators";
 Check(!gate.TryAdmit(new TwitchCommand("viewer-d", "", "Viewer", "!find", "", gateTime), defaults));
 Check(gate.TryAdmit(new TwitchCommand("viewer-d", "", "Viewer", "!find", "", gateTime, isModerator: true), defaults));
-defaults.Me.SelectedFields = new[] { "status" };
+var resetGate = new CommandGate();
+var repeatedJoin = new TwitchCommand("rejoin", "", "Viewer", "!join", "", gateTime);
+Check(resetGate.TryAdmit(repeatedJoin, defaults) && !resetGate.TryAdmit(repeatedJoin, defaults));
+resetGate.ForgetViewer("rejoin");
+Check(resetGate.TryAdmit(repeatedJoin, defaults));
+defaults.Me.SelectedFields = new[] { "name", "ageGroup", "status", "home" };
 var sampleInfo = new ViewerCitizenInfo { DisplayName = "Viewer", TotalLives = 1,
-    CurrentLifeStatus = "Active", CitizenName = "Alex", Age = "Adult", IsValid = true };
+    CurrentLifeStatus = "Active", CitizenName = "Alex", Age = "Adult", AgeDays = 36,
+    Home = "Residential Zone", HomeAddress = "Central Street, 8",
+    CurrentBuilding = "Hospital", CurrentAddress = "Park Street, 4", LocationType = "building", IsValid = true };
+Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("36 лет"));
+Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("Central Street, 8") &&
+      !CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("Residential Zone"));
+Check(CommandResponseFormatter.Format("!find", sampleInfo, defaults).Contains("Hospital — Park Street, 4") &&
+      !CommandResponseFormatter.Format("!find", sampleInfo, defaults).Contains("Central Street, 8"));
+var transportInfo = new ViewerCitizenInfo { DisplayName = "Viewer", TotalLives = 1, IsValid = true,
+    HomeAddress = "Home Street, 2", LocationType = "transport" };
+Check(CommandResponseFormatter.Format("!find", transportInfo, defaults).Contains("в транспорте") &&
+      !CommandResponseFormatter.Format("!find", transportInfo, defaults).Contains("Home Street, 2"));
+defaults.Me.SelectedFields = new[] { "status" };
 Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("статус: жив"));
 Check(!CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("Алекс"));
 defaults.Language = "en";
@@ -177,12 +194,16 @@ Console.WriteLine("PASS: find lookup, stale and missing bindings, no automatic c
 
 var panel = ViewerPanelSnapshot.Create("Connected", "channel-42", true, new[] {
     new ViewerCitizenInfo { TwitchUserId = "viewer-1", Login = "first", DisplayName = "First",
-        CitizenName = "first", Age = "Adult", Home = "Entity(1:1)", IsValid = true,
+        CitizenName = "first", Age = "Adult", AgeDays = 36, Home = "Entity(1:1)",
+        HomeAddress = "Central Street, 8", CurrentBuilding = "Hospital",
+        CurrentAddress = "Park Street, 4", IsValid = true,
         PositionAvailable = true, CurrentLifeId = "life-2", TotalLives = 2,
         CurrentLifeStatus = "Active", CurrentLife = new ViewerLifeInfo {
             LifeId = "life-2", Status = "Active", StartGameDate = "2026-07-01T00:00:00.0000000",
-            LastKnownAge = "Adult", LastKnownHome = "Main Street 4" }, PreviousLives = new[] {
-            new ViewerLifeInfo { LifeId = "life-1", Status = "Deceased", LastKnownAge = "Elderly" }
+            LastKnownAge = "Adult", LastKnownAgeDays = 36, LastKnownHome = "Residential building",
+            LastKnownHomeAddress = "Central Street, 8" }, PreviousLives = new[] {
+            new ViewerLifeInfo { LifeId = "life-1", Status = "Deceased", LastKnownAge = "Elderly",
+                LastKnownAgeDays = 84 }
         } },
     new ViewerCitizenInfo { TwitchUserId = "viewer-2", Login = "lost", IsValid = false }
 });
@@ -196,7 +217,14 @@ using (var json = JsonDocument.Parse(panel.ToJson()))
     Check(!root.GetProperty("viewers")[1].GetProperty("isValid").GetBoolean());
     Check(root.GetProperty("viewers")[0].GetProperty("totalLives").GetInt32() == 2);
     Check(root.GetProperty("viewers")[0].GetProperty("previousLives")[0].GetProperty("status").GetString() == "Deceased");
-    Check(root.GetProperty("viewers")[0].GetProperty("currentLife").GetProperty("lastKnownHome").GetString() == "Main Street 4");
+    Check(root.GetProperty("viewers")[0].GetProperty("currentLife").GetProperty("lastKnownHomeAddress").GetString() == "Central Street, 8");
+    Check(root.GetProperty("viewers")[0].GetProperty("ageDays").GetInt32() == 36);
+    Check(root.GetProperty("viewers")[0].GetProperty("ageYears").GetInt32() == 36);
+    Check(root.GetProperty("viewers")[0].GetProperty("previousLives")[0]
+        .GetProperty("lastKnownAgeYears").GetInt32() == 84);
+    Check(root.GetProperty("viewers")[0].GetProperty("homeAddress").GetString() == "Central Street, 8");
+    Check(root.GetProperty("viewers")[0].GetProperty("homeBuilding").GetString() == "");
+    Check(root.GetProperty("viewers")[0].GetProperty("currentAddress").GetString() == "Park Street, 4");
     Check(root.GetProperty("viewers")[1].GetProperty("currentLife").ValueKind == JsonValueKind.Null);
     Check(!panel.ToJson().Contains("Entity(") && !panel.ToJson().Contains("accessToken") &&
           !panel.ToJson().Contains("clientSecret"));
@@ -224,18 +252,20 @@ Check(!lives.TryStart("viewer-b", "bob", "Bob", 71, "2026-01-02", "",
     "Adult", "", "", out _));
 Check(lives.TryStart("viewer-b", "bob", "Bob", 72, "2026-01-02", "",
     "Adult", "", "", out _));
-lives.UpdateSnapshot("viewer-a", "Elderly", "home available", "");
+lives.UpdateSnapshot("viewer-a", "Elderly", "home available", "", 84, "Central Street, 8");
 Check(lives.MarkDeceased("viewer-a", "2026-02-01", ""));
 Check(!lives.IsClaimed(71) && firstLife!.Status == ViewerLifeStatus.Deceased &&
-      firstLife.CitizenKey == 0 && firstLife.LastKnownAge == "Elderly");
+      firstLife.CitizenKey == 0 && firstLife.LastKnownAge == "Elderly" &&
+      firstLife.LastKnownAgeDays == 84 && firstLife.LastKnownHomeAddress == "Central Street, 8");
 Check(lives.TryStart("viewer-a", "alice", "Alice", 73, "2026-02-02", "label:Next Name",
     "Adult", "", "", out var secondLife));
 Check(secondLife!.LifeId != firstLife!.LifeId && lives.IsClaimed(73));
-Check(lives.MarkMissing("viewer-b"));
+Check(lives.MarkMissing("viewer-b", "EntityAbsent"));
 Check(!lives.TryStart("viewer-b", "bob", "Bob", 74, "2026-02-03", "",
     "Adult", "", "", out _));
 Check(lives.TryGet("viewer-b", out var missingAccount) &&
-      missingAccount!.Current!.Status == ViewerLifeStatus.Missing);
+      missingAccount!.Current!.Status == ViewerLifeStatus.Missing &&
+      missingAccount.Current.MissingReason == "EntityAbsent" && missingAccount.Lives.Count == 1);
 var savedModel = JsonSerializer.Serialize(lives.Accounts);
 Check(!savedModel.Contains("accessToken") && !savedModel.Contains("clientSecret"));
 var restoredAccounts = JsonSerializer.Deserialize<List<ViewerLifeAccount<int>>>(savedModel)!;
@@ -245,20 +275,78 @@ Check(restored.TryGet("viewer-a", out var restoredAlice) && restoredAlice!.Lives
       restoredAlice.Current!.Status == ViewerLifeStatus.Active && restoredAlice.Current.CitizenKey == 73 &&
       restoredAlice.Lives[0].Status == ViewerLifeStatus.Deceased);
 Check(restored.TryGet("viewer-b", out var restoredBob) &&
-      restoredBob!.Current!.Status == ViewerLifeStatus.Missing);
+      restoredBob!.Current!.Status == ViewerLifeStatus.Missing && restoredBob.Current.MissingReason == "EntityAbsent");
+Check(restored.Unbind("viewer-a", "2026-03-01") && !restored.IsClaimed(73));
+Check(restoredAlice!.Current!.Status == ViewerLifeStatus.Unbound &&
+      restoredAlice.Current.CitizenKey == 0 && restoredAlice.Lives.Count == 2);
+Check(restored.TryStart("viewer-a", "alice", "Alice", 75, "2026-03-02", "label:Again",
+    "Adult", "", "", out _) && restoredAlice.Lives.Count == 3);
+var afterUnbind = new ViewerLifeJournal<int>();
+afterUnbind.Restore(JsonSerializer.Deserialize<List<ViewerLifeAccount<int>>>(JsonSerializer.Serialize(restored.Accounts))!, _ => true);
+Check(afterUnbind.TryGet("viewer-a", out var afterUnbindAlice) &&
+      afterUnbindAlice!.Lives[1].Status == ViewerLifeStatus.Unbound &&
+      afterUnbindAlice.Current!.Status == ViewerLifeStatus.Active);
+Check(restored.Delete("viewer-a") && !restored.IsClaimed(75) &&
+      !restored.TryGet("viewer-a", out _) && restored.Accounts.Count == 1);
+Check(!restored.Delete("viewer-a"));
+var afterDelete = new ViewerLifeJournal<int>();
+afterDelete.Restore(JsonSerializer.Deserialize<List<ViewerLifeAccount<int>>>(JsonSerializer.Serialize(restored.Accounts))!, _ => true);
+Check(!afterDelete.TryGet("viewer-a", out _) && afterDelete.TryGet("viewer-b", out _));
 var orphaned = JsonSerializer.Deserialize<List<ViewerLifeAccount<int>>>(savedModel)!;
 var missingAfterLoad = new ViewerLifeJournal<int>();
-missingAfterLoad.Restore(orphaned, _ => false);
+missingAfterLoad.Restore(orphaned, _ => false, _ => "UnresolvedBinding");
 Check(missingAfterLoad.TryGet("viewer-a", out var orphanedAlice) &&
       orphanedAlice!.Current!.Status == ViewerLifeStatus.Missing &&
-      !missingAfterLoad.IsClaimed(73));
+      orphanedAlice.Current.MissingReason == "UnresolvedBinding" &&
+      orphanedAlice.Lives.Count == 2 && !missingAfterLoad.IsClaimed(73));
 var nextCity = new ViewerLifeJournal<int>();
 nextCity.Restore(Array.Empty<ViewerLifeAccount<int>>(), _ => true);
-Check(nextCity.Accounts.Count == 0 && restored.Accounts.Count == 2);
+Check(nextCity.Accounts.Count == 0 && restored.Accounts.Count == 1);
 var invalidVersionRejected = false;
 try { ViewerLifeSaveFormat.RequireSupported(99); }
 catch (System.IO.InvalidDataException) { invalidVersionRejected = true; }
-Check(invalidVersionRejected && ViewerLifeSaveFormat.Version == 1);
+ViewerLifeSaveFormat.RequireSupported(1);
+ViewerLifeSaveFormat.RequireSupported(2);
+Check(invalidVersionRejected && ViewerLifeSaveFormat.Version == 3);
+Check(CitizenFactPolicy.AgeDays(-7) == null && CitizenFactPolicy.AgeDays(35) == 35 &&
+      CitizenFactPolicy.AgeDays(36) == 36 && CitizenFactPolicy.AgeDays(365) == 365 &&
+      CitizenFactPolicy.AgeDays(float.NaN) == null && CitizenFactPolicy.AgeDays(float.PositiveInfinity) == null);
+foreach (var days in new[] { 0, 1, 2, 5, 21, 36, 71, 84, 100 })
+    Check(ModAgeModel.FromGameDays(days) == days);
+Check(ModAgeModel.GameDaysPerDisplayedYear == 1 && ModAgeModel.FromGameDays(null) == null &&
+      ModAgeModel.FromGameDays(-1) == null);
+Check(ModAgeModel.Format(0, true) == "0 лет" && ModAgeModel.Format(1, true) == "1 год" &&
+      ModAgeModel.Format(2, true) == "2 года" && ModAgeModel.Format(5, true) == "5 лет" &&
+      ModAgeModel.Format(21, true) == "21 год" && ModAgeModel.Format(36, true) == "36 лет" &&
+      ModAgeModel.Format(71, true) == "71 год" && ModAgeModel.Format(84, true) == "84 года" &&
+      ModAgeModel.Format(100, true) == "100 лет" && ModAgeModel.Format(71, false) == "71 years old");
+const int negativeBirthDay = -21;
+Check(ModAgeModel.FromGameDays(CitizenFactPolicy.AgeDays(0 - negativeBirthDay)) == 21);
+Check(CitizenFactPolicy.Address("Central Street", 8) == "Central Street, 8" &&
+      CitizenFactPolicy.Address("", 8) == "" && CitizenFactPolicy.Address("Central Street", 0) == "" &&
+      CitizenFactPolicy.Address(null, 8) == "");
+var oldLife = JsonSerializer.Deserialize<ViewerLife<int>>("{\"LifeId\":\"old\",\"Status\":1,\"LastKnownAge\":\"Adult\"}")!;
+Check(oldLife.LastKnownAge == "Adult" && oldLife.LastKnownAgeDays == null &&
+      oldLife.LastKnownHomeAddress == "" && oldLife.MissingReason == "");
+var awayFromHome = new ViewerCitizenInfo { TwitchUserId = "away", IsValid = true,
+    HomeAddress = "Home Street, 2", CurrentBuilding = "Hospital", CurrentAddress = "Care Street, 7",
+    LocationType = "building" };
+using (var currentJson = JsonDocument.Parse(ViewerPanelSnapshot.Create("Connected", "42", true,
+    new[] { awayFromHome }).ToJson()))
+{
+    var row = currentJson.RootElement.GetProperty("viewers")[0];
+    Check(row.GetProperty("homeAddress").GetString() == "Home Street, 2" &&
+          row.GetProperty("currentAddress").GetString() == "Care Street, 7" &&
+          row.GetProperty("locationType").GetString() == "building");
+}
+using (var unknownJson = JsonDocument.Parse(ViewerPanelSnapshot.Create("Connected", "42", true,
+    new[] { new ViewerCitizenInfo { TwitchUserId = "outside", IsValid = true } }).ToJson()))
+{
+    var row = unknownJson.RootElement.GetProperty("viewers")[0];
+    Check(row.GetProperty("homeAddress").GetString() == "" &&
+          row.GetProperty("currentAddress").GetString() == "" &&
+          row.GetProperty("currentBuilding").GetString() == "");
+}
 Check(EventSubProtocol.TryRead(ChatEnvelope("history-1", "!history"), out var historyEnvelope) &&
       EventSubProtocol.TryGetCommand(historyEnvelope!, "42", now, out var historyCommand) &&
       historyCommand!.Command == "!history" && historyCommand.TwitchUserId == "9001");

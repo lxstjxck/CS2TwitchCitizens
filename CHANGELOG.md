@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.6 — conditional character age in years (game verification pending)
+
+- Inspected the installed `Game.dll` (SHA-256 `AAEE15C4FA41C130ABAA1183840667E4FAAE531D67E8A9FA7536618EFFA2F86A`). `AgingSystem` returns 21, 36, and 84 game days for Teen, Adult, and Elderly thresholds. `Citizen.GetAgeInDays` subtracts `m_BirthDay` from the simulation day; the game's citizen UI reads only the `CitizenAge` category.
+- Added an explicit mod display model: one NPC life day equals one conditional character year. UI and Twitch responses show localized years, with RU plural forms and a UI explanation that the value is unrelated to the city calendar. `CitizenAge` is used when numeric age is unavailable.
+- Stored `AgeDays` and `LastKnownAgeDays` keep their original units in city saves. Plain UI snapshots derive `ageYears` and `lastKnownAgeYears`; archived lives use their saved end-of-life day count and are not recomputed from the current day. City save format remains 3 and still reads formats 1 and 2.
+- Added boundary, RU/EN, archived projection, and response tests. Runtime age display in Cities: Skylines II still needs in-game verification.
+
+## 0.8.5 — resident card and binding management (game verification pending)
+
+- Removed the duplicate Missing help control, the TC badge, and the camera footer note. Kept command headings on one line and added a small `by lxstjxck` footer.
+- Reduced the resident card to age, status, home, work, one current location, and history. Current building, home building, and address source values remain in internal snapshots. Home is identified by matching building entities; transport is not shown as a building. Worker and Student components provide known employment states; missing Worker data stays unknown.
+- Kept age in clearly labeled game days. The installed game exposes age categories and `GetAgeInDays`, but its calendar `DaysPerYear` does not establish a citizen-age conversion to years. Existing archived values retain their units.
+- Added UI-only confirmed Unbind and Delete actions. Unbind closes the current life as `Unbound`, preserves prior history, releases the citizen and viewer cooldown, and permits another `!join`. Delete removes the viewer account and its city history without deleting the NPC. Format 3 stores the new status using the existing Entity-aware save layout and reads formats 1 and 2.
+- C# checks, UI checks, TypeScript typecheck, and the official Code Mod/UI build and local deployment pass. The existing Sass legacy API warning remains. In-game verification remains pending.
+
+## 0.8.4 — UI fixes and verified citizen facts (game verification pending)
+
+- Kept command names together at narrow widths, drew checkbox marks with CSS, left-aligned permission choices, removed the closed advanced-section gap, and kept resident name labels intact with long names.
+- Show the legacy Twitch configuration warning only when an old file exists and modern DPAPI credentials are absent during a disconnected/error state. The legacy file and credentials are untouched.
+- Explain Missing status through a hover/click help control using the confirmed missing-entity reason; do not infer death or remove saved lives.
+- Read `Citizen.GetAgeInDays` on the game thread and display whole game days beside the age category. Read home and current building addresses through `BuildingUtils.GetAddress`; a valid `CurrentTransport` reference reports transport. Unknown addresses stay unknown, and the home address is never substituted for a current location.
+- Extend plain UI and history DTOs with optional age, address, and Missing reason values. City-save format 2 appends these fields and still reads format 1; command-setting selections stay version 1. The saved Start date remains the Twitch life/binding start, not a birthday.
+- Added C# and UI regression checks for formatting, missing data, history preservation, old configuration states, layout, and RU/EN. Typecheck and official Code Mod/UI build pass. Runtime verification in Cities: Skylines II remains required.
+
 ## 0.8.3 — Commands tab UX redesign (game UI verification pending)
 
 - Reorganized the Commands tab into compact global settings, four command tabs, basic command controls, and one advanced section at a time. All v1 command settings and saved values remain supported; resets now ask for confirmation in the advanced sections.

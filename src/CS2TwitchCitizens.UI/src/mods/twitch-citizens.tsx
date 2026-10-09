@@ -4,7 +4,7 @@ import { Button, Panel, Scrollable } from "cs2/ui";
 import styles from "./twitch-citizens.module.scss";
 import { filterViewers } from "./viewer-search";
 import { canLocate, isCameraError, lifeHistory, LifeSummary, selectedViewer } from "./viewer-view-model";
-import { ageText, connectionText, dateText, detectLocale, focusText, lifeCountText, lifeText, Locale, text, valueText, viewerCountText, viewerMetaText } from "./ui-text";
+import { ageDetailText, connectionText, dateText, detectLocale, focusText, lifeCountText, lifeText, Locale, missingReasonText, showLegacyNotice, text, valueText, viewerCountText, viewerMetaText } from "./ui-text";
 import { defaultCommands, parseCommandConfig } from "./command-config";
 import { CommandEditor } from "./command-editor";
 export { CommandEditor } from "./command-editor";
@@ -15,8 +15,19 @@ type Viewer = {
   displayName: string;
   citizenName: string;
   age: string;
+  ageDays?: number | null;
+  ageYears?: number | null;
+  homeAddress?: string;
+  homeBuilding?: string;
+  currentBuilding?: string;
+  currentAddress?: string;
+  locationType?: string;
+  missingReason?: string;
   hasHome: boolean;
   hasWorkplace: boolean;
+  workplace?: string;
+  employment?: string;
+  workAddress?: string;
   isValid: boolean;
   positionAvailable: boolean;
   currentLifeId: string;
@@ -28,7 +39,7 @@ type Viewer = {
 type Snapshot = { twitchStatus: string; channelId: string; gameLoaded: boolean; viewers: Viewer[] };
 type FocusFeedback = { viewerId: string; result: string; sequence: number };
 type Auth = { state: string; login: string; displayName: string; userCode: string; verificationUri: string;
-  expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean;
+  expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean; modernCredentials: boolean;
   writePermission: "Allowed" | "AuthorizationRequired" | "Checking"; reauthorizationState: string };
 const group = "cs2twitchcitizens";
 const snapshotBinding = bindValue<string>(group, "snapshot", "{}");
@@ -46,6 +57,8 @@ const openTwitchVerification = bindTriggerWithArgs<[string]>(group, "openTwitchV
 const focusCitizen = bindTriggerWithArgs<[string]>(group, "focusCitizen");
 const followCitizen = bindTriggerWithArgs<[string]>(group, "followCitizen");
 const stopFollowing = bindTriggerWithArgs<[string]>(group, "stopFollowing");
+const unbindViewer = bindTriggerWithArgs<[string]>(group, "unbindViewer");
+const deleteViewer = bindTriggerWithArgs<[string]>(group, "deleteViewer");
 const panelOpen = bindLocalValue(false);
 const localeBinding = bindLocalValue<Locale>(detectLocale());
 
@@ -74,16 +87,30 @@ function parseAuth(value: string): Auth {
       userCode: data.userCode || "", verificationUri: data.verificationUri || "",
       expiresAt: data.expiresAt || 0, error: data.error || "",
       eventSubStatus: data.eventSubStatus || "Disabled", legacyConfig: !!data.legacyConfig,
+      modernCredentials: !!data.modernCredentials,
       writePermission: data.writePermission === "Allowed" || data.writePermission === "Checking"
         ? data.writePermission : "AuthorizationRequired",
       reauthorizationState: data.reauthorizationState || "Idle" };
   } catch { return { state: "Disconnected", login: "", displayName: "", userCode: "", verificationUri: "",
-    expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false,
+    expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false, modernCredentials: false,
     writePermission: "AuthorizationRequired", reauthorizationState: "Idle" }; }
 }
 
 function displayName(viewer: Viewer, locale: Locale): string {
   return viewer.displayName || viewer.login || text(locale, "noData");
+}
+
+function locationText(locale: Locale, viewer: Viewer): string {
+  if (!viewer.isValid) return text(locale, "locationUnknown");
+  if (viewer.locationType === "home")
+    return text(locale, "atHome") + (viewer.homeAddress ? " — " + viewer.homeAddress : "");
+  if (viewer.locationType === "work")
+    return text(locale, "atWork") + (viewer.workplace ? " — " + viewer.workplace : "") +
+      (viewer.currentAddress ? ", " + viewer.currentAddress : "");
+  if (viewer.locationType === "building")
+    return [viewer.currentBuilding, viewer.currentAddress].filter(Boolean).join(" — ") || text(locale, "locationUnknown");
+  if (viewer.locationType === "transport") return text(locale, "inTransport");
+  return text(locale, "locationUnknown");
 }
 
 export const TwitchCitizensButton = () => {
@@ -107,6 +134,11 @@ export const TwitchCitizensPanel = () => {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [viewMode, setViewMode] = useState<"info" | "history">("info");
+  const [missingHover, setMissingHover] = useState("");
+  const [missingPinned, setMissingPinned] = useState("");
+  const [ageHelpPinned, setAgeHelpPinned] = useState(false);
+  const [ageHelpHover, setAgeHelpHover] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"unbind" | "delete" | null>(null);
   const snapshotJson = useValue(snapshotBinding);
   const snapshot = useMemo(() => parseSnapshot(snapshotJson), [snapshotJson]);
   const feedbackJson = useValue(focusResultBinding);
@@ -123,11 +155,20 @@ export const TwitchCitizensPanel = () => {
     ? feedback.result : undefined;
   const boundCount = snapshot.viewers.filter((viewer) => viewer.currentLifeStatus === "Active" && viewer.isValid).length;
   const totalLives = snapshot.viewers.reduce((count, viewer) => count + viewer.totalLives, 0);
+  const missingHelp = (key: string, reason: string) => <>
+    <span className={styles.missingHelpWrap} onMouseEnter={() => setMissingHover(key)}
+      onMouseLeave={() => setMissingHover("")}>
+      <Button variant="default" className={`${styles.control} ${styles.missingHelpButton}`}
+        aria-label={locale === "ru" ? "Почему недоступен?" : "Why unavailable?"}
+        onSelect={() => setMissingPinned(value => value === key ? "" : key)}>?</Button>
+    </span>
+    {(missingHover === key || missingPinned === key) &&
+      <span className={styles.missingHelpText} role="note">{missingReasonText(locale, reason)}</span>}
+  </>;
 
   if (!open) return null;
   return <Panel className={styles.panel} data-locale={locale} onClose={() => { setViewMode("info"); panelOpen.update(false); }}
     header={<div className={styles.header}>
-      <span className={styles.brandGlyph} aria-hidden="true">TC</span>
       <div className={styles.headerText}>
         <strong>{text(locale, "title")}</strong>
         <small>{text(locale, "subtitle")}</small>
@@ -171,7 +212,8 @@ export const TwitchCitizensPanel = () => {
           {auth.state === "Connected" && auth.error && <p className={styles.authError}>{text(locale,
             auth.error === "ClientIdMissing" ? "clientIdMissing" : auth.error === "StorageError" ? "storageError" :
             auth.error === "CodeExpired" ? "codeExpired" : auth.error === "Denied" ? "authDenied" : "networkError")}</p>}
-          {auth.legacyConfig && <p className={styles.helper}>{text(locale, "legacyNotice")}</p>}
+          {showLegacyNotice(auth.legacyConfig, auth.modernCredentials, auth.state) &&
+            <p className={styles.helper}>{text(locale, "legacyNotice")}</p>}
           {(auth.state === "Disconnected" || auth.state === "Error") && <>
             {auth.state === "Error" && <p className={styles.authError}>{text(locale, auth.error === "ClientIdMissing" ? "clientIdMissing" :
               auth.error === "StorageError" ? "storageError" : auth.error === "CodeExpired" ? "codeExpired" :
@@ -218,24 +260,28 @@ export const TwitchCitizensPanel = () => {
             placeholder={text(locale, "search")} aria-label={text(locale, "searchLabel")} />
           <Scrollable className={styles.viewerList} vertical trackVisibility="scrollable">
             {viewers.length === 0 && <div className={styles.empty}>{text(locale, "empty")}</div>}
-            {viewers.map((viewer) => <Button variant="default" key={viewer.twitchUserId}
+            {viewers.map((viewer) => <div className={styles.viewerRowWrap} key={viewer.twitchUserId}>
+              <Button variant="default"
               selected={viewer.twitchUserId === selected?.twitchUserId}
               data-selected={viewer.twitchUserId === selected?.twitchUserId}
               tooltipLabel={displayName(viewer, locale)}
-              className={`${styles.control} ${styles.viewerRow}`} onSelect={() => setSelectedId(viewer.twitchUserId)}>
+              className={`${styles.control} ${styles.viewerRow}`} onSelect={() => { setSelectedId(viewer.twitchUserId); setConfirmAction(null); }}>
               <span className={styles.rowText}>
-                <strong className={styles.longValue} title={displayName(viewer, locale)}>
-                  {text(locale, "name")}: {displayName(viewer, locale)}
+                <strong className={styles.viewerName} title={displayName(viewer, locale)}>
+                  <span className={styles.nameLabel}>{text(locale, "name")}:</span>
+                  <span className={styles.nameValue}>{displayName(viewer, locale)}</span>
                 </strong>
-                {viewerMetaText(locale, viewer.age, viewer.totalLives) &&
-                  <small className={styles.rowMeta} title={viewerMetaText(locale, viewer.age, viewer.totalLives)}>
-                    {viewerMetaText(locale, viewer.age, viewer.totalLives)}
+                {viewerMetaText(locale, viewer.age, viewer.totalLives, viewer.ageYears) &&
+                  <small className={styles.rowMeta} title={viewerMetaText(locale, viewer.age, viewer.totalLives, viewer.ageYears)}>
+                    {viewerMetaText(locale, viewer.age, viewer.totalLives, viewer.ageYears)}
                   </small>}
               </span>
               <span className={styles.lifePill} data-life={viewer.currentLifeStatus}>
                 {lifeText(locale, viewer.currentLifeStatus)}
               </span>
-            </Button>)}
+            </Button>
+              {viewer.currentLifeStatus === "Missing" && missingHelp("row:" + viewer.twitchUserId, viewer.missingReason || "")}
+            </div>)}
           </Scrollable>
 
           {selected && <div className={styles.card}>
@@ -245,10 +291,11 @@ export const TwitchCitizensPanel = () => {
                 {selected.login && selected.login !== selected.displayName &&
                   <small className={styles.longValue}>@{selected.login}</small>}
                 {selected.citizenName && selected.citizenName !== displayName(selected, locale) &&
-                  <small className={styles.longValue}>{text(locale, "citizenName")}: {selected.citizenName}</small>}
-                {viewerMetaText(locale, selected.age, selected.totalLives) &&
-                  <small className={styles.cardMeta} title={viewerMetaText(locale, selected.age, selected.totalLives)}>
-                    {viewerMetaText(locale, selected.age, selected.totalLives)}
+                  <small className={styles.viewerName}><span className={styles.nameLabel}>{text(locale, "citizenName")}:</span>
+                    <span className={styles.nameValue}>{selected.citizenName}</span></small>}
+                {viewerMetaText(locale, selected.age, selected.totalLives, selected.ageYears) &&
+                  <small className={styles.cardMeta} title={viewerMetaText(locale, selected.age, selected.totalLives, selected.ageYears)}>
+                    {viewerMetaText(locale, selected.age, selected.totalLives, selected.ageYears)}
                   </small>}
               </div>
               <span className={styles.lifePill} data-life={selected.currentLifeStatus}>
@@ -274,21 +321,33 @@ export const TwitchCitizensPanel = () => {
                   </div>
                   <div className={styles.historyFacts}>
                     <div className={styles.fact}><span>{text(locale, "citizenName")}</span><strong>{valueText(locale, number === selected.totalLives && life.status === "Active" ? selected.citizenName || life.originalCitizenName?.replace(/^(custom|label):/, "") : life.originalCitizenName?.replace(/^(custom|label):/, ""))}</strong></div>
-                    <div className={styles.fact}><span>{text(locale, "age")}</span><strong>{ageText(locale, number === selected.totalLives && life.status === "Active" ? selected.age || life.lastKnownAge : life.lastKnownAge)}</strong></div>
+                    <div className={styles.fact}><span>{text(locale, "age")}</span><strong>{ageDetailText(locale,
+                      number === selected.totalLives && life.status === "Active" ? selected.age || life.lastKnownAge : life.lastKnownAge,
+                      number === selected.totalLives && life.status === "Active" ? selected.ageYears ?? life.lastKnownAgeYears : life.lastKnownAgeYears)}</strong></div>
                     <div className={styles.fact}><span>{text(locale, "startDate")}</span><strong>{dateText(locale, life.startGameDate)}</strong></div>
                     {life.endGameDate && <div className={styles.fact}><span>{text(locale, "endDate")}</span><strong>{dateText(locale, life.endGameDate)}</strong></div>}
-                    <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{valueText(locale, life.lastKnownHome)}</strong></div>
+                    <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{life.lastKnownHomeAddress || text(locale, "addressUnknown")}</strong></div>
+                    {life.lastKnownHome && <div className={styles.fact}><span>{text(locale, "homeBuilding")}</span><strong>{valueText(locale, life.lastKnownHome)}</strong></div>}
                     <div className={styles.fact}><span>{text(locale, "workplace")}</span><strong>{valueText(locale, life.lastKnownWorkplace)}</strong></div>
                     {life.causeOfDeath && <div className={styles.fact}><span>{text(locale, "causeOfDeath")}</span><strong>{life.causeOfDeath}</strong></div>}
                   </div>
                 </div>)}
             </Scrollable> : <>
             <div className={styles.facts}>
-              <div className={styles.fact}><span>{text(locale, "age")}</span><strong>{ageText(locale, selected.age)}</strong></div>
+              <div className={styles.fact}>
+                <span className={styles.ageHeading} onMouseEnter={() => setAgeHelpHover(true)} onMouseLeave={() => setAgeHelpHover(false)}>
+                  {text(locale, "age")}
+                  <Button variant="default" className={`${styles.control} ${styles.ageHelpButton}`}
+                    aria-label={text(locale, "ageModelHelp")}
+                    onSelect={() => setAgeHelpPinned(value => !value)}>?</Button>
+                </span>
+                <strong>{ageDetailText(locale, selected.age, selected.ageYears)}</strong>
+                {(ageHelpHover || ageHelpPinned) && <small className={styles.ageHelpText} role="note">{text(locale, "ageModelHelp")}</small>}
+              </div>
               <div className={styles.fact}><span>{text(locale, "history")}</span><strong>{lifeCountText(locale, selected.totalLives)}</strong></div>
-              <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{selected.hasHome ? text(locale, "yes") : text(locale, "noData")}</strong></div>
-              <div className={styles.fact}><span>{text(locale, "workplace")}</span><strong>{selected.hasWorkplace ? text(locale, "yes") : text(locale, "noData")}</strong></div>
-              <div className={styles.fact}><span>{text(locale, "location")}</span><strong>{selected.positionAvailable ? text(locale, "available") : text(locale, "unavailable")}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "home")}</span><strong>{selected.homeAddress || text(locale, "addressUnknown")}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "workplace")}</span><strong>{selected.workplace ? selected.workplace + (selected.workAddress ? ", " + selected.workAddress : "") : (selected.employment === "yes" ? text(locale, "employed") : selected.employment === "student" ? text(locale, "student") : text(locale, "employmentUnknown"))}</strong></div>
+              <div className={styles.fact}><span>{text(locale, "location")}</span><strong>{locationText(locale, selected)}</strong></div>
               <div className={styles.fact}><span>{text(locale, "status")}</span><strong>{lifeText(locale, selected.currentLifeStatus)}</strong></div>
             </div>
 
@@ -309,9 +368,25 @@ export const TwitchCitizensPanel = () => {
               {focusText(locale, selectedFeedback)}
             </div>
             </>}
+            <div className={styles.managementActions}>
+              {(selected.currentLifeStatus === "Active" || selected.currentLifeStatus === "Missing") &&
+                <Button variant="default" className={styles.control} onSelect={() => setConfirmAction("unbind")}>{text(locale, "unbind")}</Button>}
+              <Button variant="default" className={`${styles.control} ${styles.dangerButton}`}
+                onSelect={() => setConfirmAction("delete")}>{text(locale, "deleteViewer")}</Button>
+            </div>
+            {confirmAction && <div className={styles.confirmBox} role="dialog">
+              <strong>{text(locale, confirmAction === "unbind" ? "confirmUnbind" : "confirmDelete")}</strong>
+              <p>{text(locale, confirmAction === "unbind" ? "unbindDetail" : "deleteDetail")}</p>
+              <div className={styles.confirmActions}>
+                <Button variant="default" className={styles.control} onSelect={() => setConfirmAction(null)}>{text(locale, "cancel")}</Button>
+                <Button variant="default" className={`${styles.control} ${confirmAction === "delete" ? styles.dangerButton : ""}`}
+                  onSelect={() => { if (confirmAction === "unbind") unbindViewer(selected.twitchUserId); else deleteViewer(selected.twitchUserId); setConfirmAction(null); setSelectedId(""); }}>
+                  {text(locale, "confirm")}</Button>
+              </div>
+            </div>}
           </div>}
         </>}
-        <div className={styles.footer}>{text(locale, "cameraNote")}</div>
+        <div className={`${styles.footer} ${styles.byline}`}>by lxstjxck</div>
       </div>
     </Scrollable>
   </Panel>;

@@ -47,7 +47,7 @@ export function CommandEditor({ config, recovered, saveFailed = false, locale, i
     <div className={styles.toggleBlock}><div className={styles.toggleRow}>
       <Button variant="default" className={`${styles.control} ${styles.commandToggle}`} selected={checked}
         data-selected={checked} onSelect={() => action(!checked)}>
-        <span className={styles.toggleMark}>{checked ? "✓" : ""}</span><span>{label}</span>
+        <span className={styles.toggleMark} aria-hidden="true" /><span>{label}</span>
       </Button>{key && help(key)}
     </div>{key && helpNote(key)}</div>;
   const number = (label: string, key: string, value: number, min: number, max: number,
@@ -126,9 +126,9 @@ export function CommandEditor({ config, recovered, saveFailed = false, locale, i
     <div className={styles.commandTabs}>{(["join", "me", "find", "history"] as CommandName[]).map(name =>
       <Button variant="default" key={name} className={`${styles.control} ${styles.commandTab}`}
         selected={selected === name} data-selected={selected === name} onSelect={() => switchCommand(name)}>
-        !{name}<span className={styles.tabDot} data-enabled={config[name].enabled} /></Button>)}</div>
+        <span className={styles.commandTabName}>!{name}</span><span className={styles.tabDot} data-enabled={config[name].enabled} /></Button>)}</div>
     <div className={styles.commandTitle}>
-      <div><strong>!{selected}</strong><p>{commandPurpose[selected][locale]}</p></div>
+      <div className={styles.commandTitleText}><strong className={styles.commandName}>!{selected}</strong><p>{commandPurpose[selected][locale]}</p></div>
       <span className={styles.commandState} data-enabled={option.enabled}>
         {option.enabled ? (ru ? "Включена" : "Enabled") : (ru ? "Выключена" : "Disabled")}</span>
     </div>

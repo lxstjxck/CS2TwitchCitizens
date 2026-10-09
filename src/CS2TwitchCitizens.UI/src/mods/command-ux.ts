@@ -42,14 +42,14 @@ export const settingHelp: Record<string, Localized> = {
 
 export const fieldHelp: Record<string, Localized> = {
   name: { ru: "Имя жителя из игровой системы имён; после !join мод назначает имя Twitch.", en: "Citizen name from the game's name system; !join assigns the Twitch name." },
-  ageGroup: { ru: "Возрастная группа из компонента Citizen: ребёнок, подросток, взрослый или пожилой.", en: "Age group from Citizen: child, teen, adult, or elderly." },
+  ageGroup: { ru: "Условный возраст мода: один день жизни NPC соответствует одному году. Не связан с календарём города. Если игровые дни недоступны, показана категория Citizen.GetAge().", en: "Mod age estimate: one NPC life day corresponds to one year. It is unrelated to the city calendar. The Citizen.GetAge() category is used when game days are unavailable." },
   status: { ru: "Статус текущей жизни из сохранённой истории: жив, умер или недоступен.", en: "Current life status from the saved journal: alive, deceased, or missing." },
   householdSize: { ru: "Число жителей в буфере семьи, если игровая семья доступна.", en: "Number of residents in the household buffer, when available." },
-  home: { ru: "Название домашнего здания через игровую систему имён. Это не адрес улицы.", en: "Home building name from the game's name system. This is not a street address." },
+  home: { ru: "Адрес домашнего здания из BuildingUtils.GetAddress: название улицы и номер. Если адрес не найден, поле пропускается или показывает «нет данных».", en: "Home address from BuildingUtils.GetAddress: street name and number. If unavailable, the field is omitted or says ‘no data’." },
   employment: { ru: "Наличие компонента Worker у активного жителя; не показывает профессию.", en: "Whether the active citizen has a Worker component; it is not a profession." },
   work: { ru: "Название рабочего здания из Worker и игровой системы имён, если работа есть.", en: "Workplace building name from Worker and the game's name system, if employed." },
   school: { ru: "Название школы из Student и игровой системы имён, если житель учится.", en: "School name from Student and the game's name system, if enrolled." },
-  currentBuilding: { ru: "Название здания, где житель находится сейчас; оно может отличаться от дома.", en: "Name of the building where the resident is now; it may differ from home." },
+  currentBuilding: { ru: "Название или тип текущего здания и его адрес, если игра их определила. Домашний адрес не подставляется вместо текущего.", en: "Current building name or type and its address, when available. The home address is never substituted." },
   locationType: { ru: "Сравнение текущего здания с домом и работой: дома, на работе или в другом здании.", en: "Compares the current building with home and work: at home, at work, or in another building." },
   coordinates: { ru: "Текущая игровая позиция жителя, если система UI вернула координаты.", en: "Current game position of the citizen, if the UI system provides coordinates." },
   totalLives: { ru: "Число жизней этого Twitch-зрителя в городской истории.", en: "Number of this Twitch viewer's lives in the city journal." },
@@ -87,10 +87,10 @@ const labels: Record<string, Localized> = {
 export function demoFieldValue(id: string, config: CommandConfig): string {
   const ru = config.language === "ru";
   const values: Record<string, string> = {
-    name: ru ? "Алекс" : "Alex", ageGroup: ru ? "взрослый" : "adult",
-    status: ru ? "жив" : "alive", householdSize: "3", home: ru ? "Жилой дом" : "Residential building",
+    name: ru ? "Алекс" : "Alex", ageGroup: ru ? "36 лет" : "36 years old",
+    status: ru ? "жив" : "alive", householdSize: "3", home: ru ? "Центральная улица, 8" : "Central Street, 8",
     employment: ru ? "работает" : "employed", work: ru ? "Офис" : "Office",
-    school: "", currentBuilding: ru ? "Магазин" : "Shop",
+    school: "", currentBuilding: ru ? "Магазин, Парковая улица, 4" : "Shop, Park Street, 4",
     locationType: ru ? "в здании" : "in a building", coordinates: "124, 15, 239",
     totalLives: "3", currentLife: "3", startDate: "2026-01-01", endDate: "", causeOfDeath: "",
     previousLives: config.history.previousLivesLimit === 0 ? "" :
@@ -109,9 +109,16 @@ export function commandPreview(name: CommandName, config: CommandConfig): string
   let reply: string;
   if (name === "join") reply = prefix + (ru ? ", вы стали жителем города!" : ", you joined the city!");
   else {
+    let locationShown = false;
     const fields = (Array.isArray(option.selectedFields) ? option.selectedFields : [])
       .filter(id => labels[id])
       .map(id => {
+        if (id === "locationType" || id === "currentBuilding") {
+          if (locationShown) return "";
+          locationShown = true;
+          const value = demoFieldValue("currentBuilding", config);
+          return (ru ? "местоположение" : "location") + ": " + value;
+        }
         const value = demoFieldValue(id, config) || (config.missingData === "label" ? (ru ? "нет данных" : "no data") : "");
         return value ? choose(labels[id], config.language as CommandLocale) + ": " + value : "";
       }).filter(Boolean);

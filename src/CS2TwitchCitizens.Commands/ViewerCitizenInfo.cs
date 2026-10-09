@@ -9,9 +9,13 @@ public sealed class ViewerCitizenInfo
     public string CitizenName { get; set; } = string.Empty;
     public string OriginalNameDescriptor { get; set; } = string.Empty;
     public string Age { get; set; } = string.Empty;
+    public int? AgeDays { get; set; }
     public string Home { get; set; } = string.Empty;
+    public string HomeAddress { get; set; } = string.Empty;
     public string Workplace { get; set; } = string.Empty;
+    public string WorkAddress { get; set; } = string.Empty;
     public string CurrentBuilding { get; set; } = string.Empty;
+    public string CurrentAddress { get; set; } = string.Empty;
     public string LocationType { get; set; } = string.Empty;
     public string HouseholdSize { get; set; } = string.Empty;
     public string Employment { get; set; } = string.Empty;
@@ -22,6 +26,7 @@ public sealed class ViewerCitizenInfo
     public string CurrentLifeId { get; set; } = string.Empty;
     public int TotalLives { get; set; }
     public string CurrentLifeStatus { get; set; } = string.Empty;
+    public string MissingReason { get; set; } = string.Empty;
     public ViewerLifeInfo? CurrentLife { get; set; }
     public ViewerLifeInfo[] PreviousLives { get; set; } = Array.Empty<ViewerLifeInfo>();
 }
@@ -35,7 +40,10 @@ public sealed class ViewerLifeInfo
     public string EndGameDate { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string LastKnownAge { get; set; } = string.Empty;
+    public int? LastKnownAgeDays { get; set; }
     public string LastKnownWorkplace { get; set; } = string.Empty;
     public string LastKnownHome { get; set; } = string.Empty;
+    public string LastKnownHomeAddress { get; set; } = string.Empty;
+    public string MissingReason { get; set; } = string.Empty;
     public string CauseOfDeath { get; set; } = string.Empty;
 }

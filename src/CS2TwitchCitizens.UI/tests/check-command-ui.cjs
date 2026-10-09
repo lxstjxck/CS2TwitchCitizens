@@ -91,7 +91,7 @@ assert.equal(categoryText("Family / Семья", "ru"), "Семья");
 assert.equal(categoryText("Family / Семья", "en"), "Family");
 assert.match(helpText("sharedCooldown", "ru"), /одного зрителя/);
 assert.match(helpText("queue", "en"), /queue is full/);
-assert.match(helpText("home", "ru"), /Название домашнего здания/);
+assert.match(helpText("home", "ru"), /Адрес домашнего здания/);
 assert.match(commandPreview("me", defaults), /Алекс/);
 assert.match(commandPreview("join", defaults), /стали жителем/);
 assert.match(commandPreview("me", { ...defaults, language: "en" }), /Alex/);
@@ -144,6 +144,13 @@ for (let i = 0; i < 24; i++) {
 }
 
 const editorSource = fs.readFileSync(path.join(sourceDir, "command-editor.tsx"), "utf8");
+const editorCss = fs.readFileSync(path.join(sourceDir, "twitch-citizens.module.scss"), "utf8");
+assert.match(editorSource, /className=\{styles\.commandTabName\}>!\{name\}<\/span>/);
+assert.doesNotMatch(editorSource, /✓/);
+assert.match(editorCss, /\.commandTabName\s*\{[^}]*white-space:\s*nowrap/s);
+assert.match(editorCss, /\.commandToggle\[data-selected="true"\] \.toggleMark:after\s*\{[^}]*border-right:[^}]*border-bottom:/s);
+assert.match(editorCss, /\.panel \.permissionButton\s*\{[^}]*justify-content:\s*flex-start/s);
+assert.match(editorCss, /\.commandSection:last-child\s*\{[^}]*padding-bottom:\s*0/s);
 assert.doesNotMatch(editorSource, /<select|<option|<details|<summary|type="number"|type="checkbox"/);
 assert.match(editorSource, /onMouseEnter/);
 assert.match(editorSource, /onMouseLeave/);

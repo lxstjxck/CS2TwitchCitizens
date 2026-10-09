@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $project = Join-Path $root 'src\CS2TwitchCitizens.Mod\CS2TwitchCitizens.Mod.csproj'
 $ui = Join-Path $root 'src\CS2TwitchCitizens.UI'
-$expectedVersion = '0.8.3.0'
+$expectedVersion = '0.8.6.0'
 
 function Require-Path([string]$name, [string]$value) {
     if ([string]::IsNullOrWhiteSpace($value) -or -not (Test-Path -LiteralPath $value)) {
@@ -80,12 +80,12 @@ $uiDir = Join-Path $data 'Mods\CS2TwitchCitizens.UI'
 $uiBundle = Join-Path $uiDir 'CS2TwitchCitizens.UI.mjs'
 Require-Path 'Deployed UI bundle' $uiBundle
 Require-Path 'Deployed UI stylesheet' (Join-Path $uiDir 'CS2TwitchCitizens.UI.css')
-if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Version: 0.8.3' -SimpleMatch -Quiet)) {
-    throw 'Deployed UI bundle does not carry the v0.8.3 banner.'
+if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Version: 0.8.6' -SimpleMatch -Quiet)) {
+    throw 'Deployed UI bundle does not carry the v0.8.6 banner.'
 }
 $gameAssemblies = Get-ChildItem -LiteralPath $deployedModDir -File |
     Where-Object Name -In @('Game.dll', 'Unity.Entities.dll', 'Unity.Collections.dll', 'Unity.Mathematics.dll')
 if ($gameAssemblies) { throw 'Deployed Code Mod contains game assemblies.' }
 
 Write-Host "Code Mod v${expectedVersion}: $deployedModDir"
-Write-Host "UI v0.8.3: $uiDir"
+Write-Host "UI v0.8.6: $uiDir"

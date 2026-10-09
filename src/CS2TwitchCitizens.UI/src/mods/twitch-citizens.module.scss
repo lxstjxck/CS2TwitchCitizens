@@ -56,7 +56,6 @@
 }
 
 .header { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 0; }
-.brandGlyph { flex: 0 0 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 5px; background: #245a6e; color: #a9eff8; font-size: 10px; font-weight: 800; }
 .headerText { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.25; }
 .headerText strong { font-size: 17px; font-weight: 700; }
 .headerText small { margin-top: 3px; color: #a9bdca; font-size: 11px; }
@@ -89,11 +88,19 @@
 .search:focus { border-color: #67c7d9; outline: 2px solid #67c7d9; outline-offset: 1px; background: #142c3e; }
 
 .viewerList { min-height: 52px; max-height: 176px; overflow: hidden; }
+.viewerRowWrap { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; min-width: 0; }
+.viewerRowWrap .viewerRow { flex: 1 1 0; width: auto; }
+.missingHelpWrap { display: inline-flex; flex: 0 0 auto; align-items: center; }
+.panel .missingHelpButton { width: 22px; min-width: 22px; min-height: 22px; height: 22px; padding: 0; border-radius: 50%; }
+.missingHelpText { display: block; flex: 1 1 100%; min-width: 0; padding: 6px 8px; border-left: 2px solid #d6b36f; background: #213949; color: #ebdfbd; font-size: 11px; line-height: 1.35; overflow-wrap: break-word; }
 .panel .viewerRow { width: 100%; min-width: 0; display: flex; align-items: center; gap: 9px; box-sizing: border-box; padding: 8px; border: 1px solid transparent; border-bottom-color: rgba(175, 205, 222, .12); border-radius: 5px; background: transparent; color: #eef5fa; text-align: left; text-decoration: none; }
 .panel .viewerRow:hover { border-color: #3c718a; background: rgba(47, 107, 135, .35); }
 .panel .viewerRow[data-selected="true"] { border-color: #4597b3; background: rgba(40, 105, 135, .55); }
 .rowText { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
 .rowText strong { font-size: 13px; }
+.viewerName { display: flex; flex-wrap: wrap; gap: 0 4px; min-width: 0; max-width: 100%; }
+.nameLabel { flex: 0 0 auto; white-space: nowrap; }
+.nameValue { min-width: 0; overflow-wrap: break-word; word-break: break-word; }
 .rowMeta, .cardMeta { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b7c8d4; font-size: 11px; }
 .longValue { display: block; min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: break-word; word-break: break-word; }
 .lifePill { flex: 0 0 auto; max-width: 104px; padding: 3px 8px; border-radius: 14px; background: #315268; color: #b9d5e2; font-size: 11px; text-align: center; white-space: normal; }
@@ -111,10 +118,12 @@
 .commandEditor { display: flex; flex-direction: column; gap: 12px; min-width: 0; width: 100%; color: #eef5fa; }
 .commandHeader, .commandTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
 .commandHeader strong, .commandTitle strong { font-size: 14px; }
+.commandTitleText { flex: 1 1 auto; min-width: 80px; }
+.commandName { display: inline-block; min-width: 70px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
 .commandTitle p { margin: 3px 0 0; color: #b6cbd7; font-size: 11px; }
 .replyStatus, .commandState { flex: 0 0 auto; padding: 3px 7px; border-radius: 12px; color: #e0b96d; background: rgba(95, 77, 42, .4); font-size: 10px; }
 .replyStatus[data-enabled="true"], .commandState[data-enabled="true"] { color: #63e4bd; background: rgba(18, 107, 89, .35); }
-.commandSection { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid rgba(175, 205, 222, .13); }
+.commandSection { display: flex; flex-direction: column; gap: 8px; min-width: 0; border-bottom: 1px solid rgba(175, 205, 222, .13); }
 .commandSection:last-child { border-bottom: 0; padding-bottom: 0; }
 .commandSetting { display: flex; flex-direction: column; gap: 5px; min-width: 0; font-size: 12px; }
 .settingHeading { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-width: 0; }
@@ -122,17 +131,19 @@
 .toggleRow { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
 .panel .commandToggle { justify-content: flex-start; flex: 1; min-height: 30px; padding: 3px 0; border: 0; background: transparent; text-align: left; font-weight: 500; }
 .panel .commandToggle:hover { background: rgba(54, 99, 123, .3); }
-.toggleMark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; border: 1px solid #7898a9; border-radius: 4px; color: #173644; background: transparent; font-size: 12px; }
+.toggleMark { display: inline-block; position: relative; flex: 0 0 16px; width: 16px; height: 16px; box-sizing: border-box; margin-right: 8px; border: 1px solid #7898a9; border-radius: 4px; background: transparent; }
 .commandToggle[data-selected="true"] .toggleMark { border-color: #57c9ce; background: #57c9ce; }
+.commandToggle[data-selected="true"] .toggleMark:after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border-right: 2px solid #173644; border-bottom: 2px solid #173644; transform: rotate(45deg); }
 .helpWrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
 .panel .helpButton { width: 20px; min-width: 20px; min-height: 20px; height: 20px; padding: 0; border-radius: 50%; border-color: #7298aa; background: transparent; color: #c8dce5; font-size: 11px; }
 .helpText { display: block; width: 100%; box-sizing: border-box; padding: 7px 8px; border-left: 2px solid #5cc6d2; border-radius: 3px; background: #102a3a; color: #e6f3f8; font-size: 11px; line-height: 1.35; white-space: normal; overflow-wrap: break-word; }
-.panel .commandTab { flex: 1; min-height: 30px; padding: 5px 6px; border-radius: 15px; background: #213b4f; }
+.panel .commandTab { flex: 1 1 0; min-width: 0; min-height: 30px; padding: 5px 4px; border-radius: 15px; background: #213b4f; white-space: nowrap; }
+.commandTabName { white-space: nowrap; overflow-wrap: normal; }
 .panel .commandTab[data-selected="true"] { border-color: #64c6d4; background: #28718a; color: #fff; }
 .tabDot { display: inline-block; width: 5px; height: 5px; margin-left: 5px; border-radius: 50%; background: #899ba5; }
 .tabDot[data-enabled="true"] { background: #52dbb0; }
 .permissionChoices { display: flex; flex-direction: column; gap: 2px; }
-.panel .permissionButton { justify-content: flex-start; min-height: 28px; padding: 3px 0; border: 0; background: transparent; font-weight: 500; }
+.panel .permissionButton { display: flex; justify-content: flex-start; align-items: center; width: 100%; min-height: 30px; padding: 3px 6px; border: 0; background: transparent; font-weight: 500; text-align: left; }
 .panel .permissionButton:hover { background: rgba(54, 99, 123, .3); }
 .radioMark { width: 15px; height: 15px; box-sizing: border-box; margin-right: 8px; border: 1px solid #7898a9; border-radius: 50%; }
 .permissionButton[data-selected="true"] .radioMark { border: 5px solid #61cddd; }
@@ -176,6 +187,9 @@
 .fact { width: 50%; min-width: 0; display: flex; flex-direction: column; gap: 3px; box-sizing: border-box; padding-right: 9px; font-size: 12px; }
 .fact span { color: #b7c6d0; }
 .fact strong { max-width: 100%; font-weight: 600; overflow-wrap: break-word; word-break: break-word; }
+.ageHeading { display: inline-flex; align-items: center; gap: 5px; }
+.panel .ageHelpButton { min-height: 18px; height: 18px; min-width: 18px; width: 18px; padding: 0; border-radius: 50%; font-size: 10px; }
+.ageHelpText { display: block; padding: 5px; border-left: 2px solid #5cc6d2; background: #102a3a; font-size: 10px; line-height: 1.35; }
 .panel .findButton { width: 100%; min-width: 0; min-height: 40px; border-color: #0b9b82; background: #0b9b82; color: #fff; font-weight: 700; }
 .panel .findButton:hover { border-color: #16bc9e; background: #0cad90; }
 .panel .findButton:active { background: #07836f; }
@@ -196,6 +210,10 @@
 .helper { margin: 0; font-size: 11px; line-height: 1.45; overflow-wrap: break-word; }
 .empty, .notice { padding: 9px 5px; color: #bbcad4; font-size: 12px; }
 .footer { padding-top: 2px; color: #a9bdca; font-size: 11px; line-height: 1.4; overflow-wrap: break-word; }
+.byline { text-align: right; font-size: 10px; opacity: .75; }
+.managementActions { display: flex; gap: 6px; flex-wrap: wrap; }
+.confirmBox { padding: 9px; border: 1px solid #b98080; border-radius: 5px; background: #40394a; font-size: 12px; }
+.confirmActions { display: flex; gap: 6px; margin-top: 8px; }
 
 @media (max-width: 1500px) {
   .panel { top: 66px; right: 16px; width: 380px; min-width: 380px; max-width: 380px; max-height: calc(100vh - 86px); }

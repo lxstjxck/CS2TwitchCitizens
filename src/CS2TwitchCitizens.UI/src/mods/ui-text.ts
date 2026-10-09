@@ -6,14 +6,24 @@ const ru = {
   searchLabel: "Поиск по Twitch-имени или имени жителя", empty: "Зрители не найдены",
   loadCity: "Загрузите город, чтобы увидеть жителей.", connection: "Twitch",
   bound: "Привязано", totalLives: "Всего жизней", life: "жизнь", lives: "жизни",
-  age: "Возраст", status: "Статус", home: "Дом", workplace: "Работа", location: "Местоположение",
+  age: "Возраст", status: "Статус", home: "Домашний адрес", homeBuilding: "Тип домашнего здания",
+  currentBuilding: "Текущее здание", currentAddress: "Адрес текущего здания",
+  addressUnknown: "Адрес неизвестен", locationUnknown: "Точное местоположение неизвестно",
+  positionAvailable: "Положение в мире доступно", inTransport: "В транспорте",
+  ageDays: "игровых дней", workplace: "Работа", location: "Местоположение",
+  ageModelHelp: "Условный возраст персонажа. Один день жизни в симуляции соответствует одному году. Не связан с календарём города.",
+  atHome: "Дома", atWork: "На работе", employed: "Работает", student: "Учится", employmentUnknown: "Неизвестно",
+  unbind: "Отвязать", deleteViewer: "Удалить все данные", confirmUnbind: "Отвязать зрителя?",
+  confirmDelete: "Удалить все данные зрителя?", unbindDetail: "История жизней сохранится. Житель останется в городе.",
+  deleteDetail: "Привязка и история жизней будут удалены без возможности восстановления через интерфейс.",
+  cancel: "Отмена", confirm: "Подтвердить", lifeUnbound: "Отвязан",
   history: "История", citizenName: "Имя жителя", login: "Логин Twitch",
   displayName: "Имя Twitch",
   lifeNumber: "Жизнь №", infoTab: "Информация", lifeHistory: "История жизней",
   emptyHistory: "История жизней пуста", startDate: "Начало", endDate: "Конец", causeOfDeath: "Причина смерти",
   noData: "Нет данных", yes: "Есть", available: "Доступно", unavailable: "Недоступно",
   find: "Найти в городе", follow: "Следить", stopFollow: "Остановить слежение",
-  cameraIdle: "Камера ожидает действия.", cameraNote: "Камера управляется только из интерфейса игры.",
+  cameraIdle: "Камера ожидает действия.",
   channel: "ID канала", channelMissing: "Не настроен", settingsNote: "Авторизация действует для пользователя Windows. Привязки жителей сохраняются в городе.",
   connectTwitch: "Подключить Twitch", reconnectTwitch: "Переподключить", disconnectTwitch: "Отключить Twitch",
   sendPermission: "Отправка сообщений", permissionAllowed: "Разрешено",
@@ -44,14 +54,24 @@ const en: Record<keyof typeof ru, string> = {
   searchLabel: "Search Twitch or citizen names", empty: "No viewers found",
   loadCity: "Load a city to see residents.", connection: "Twitch",
   bound: "Bound", totalLives: "Total lives", life: "life", lives: "lives",
-  age: "Age", status: "Status", home: "Home", workplace: "Work", location: "Location",
+  age: "Age", status: "Status", home: "Home address", homeBuilding: "Home building type",
+  currentBuilding: "Current building", currentAddress: "Current building address",
+  addressUnknown: "Address unknown", locationUnknown: "Exact location unknown",
+  positionAvailable: "Position available in world", inTransport: "In transport",
+  ageDays: "game days", workplace: "Work", location: "Location",
+  ageModelHelp: "Estimated character age. One simulation day corresponds to one year. It is unrelated to the city calendar.",
+  atHome: "At home", atWork: "At work", employed: "Employed", student: "Student", employmentUnknown: "Unknown",
+  unbind: "Unbind", deleteViewer: "Delete all data", confirmUnbind: "Unbind viewer?",
+  confirmDelete: "Delete all viewer data?", unbindDetail: "Life history will be kept. The citizen stays in the city.",
+  deleteDetail: "The binding and all life history will be removed and cannot be restored in the UI.",
+  cancel: "Cancel", confirm: "Confirm", lifeUnbound: "Unbound",
   history: "History", citizenName: "Citizen name", login: "Twitch login",
   displayName: "Twitch name",
   lifeNumber: "Life ", infoTab: "Information", lifeHistory: "Life history",
   emptyHistory: "No life history", startDate: "Start", endDate: "End", causeOfDeath: "Cause of death",
   noData: "No data", yes: "Available", available: "Available", unavailable: "Unavailable",
   find: "Find in city", follow: "Follow", stopFollow: "Stop following",
-  cameraIdle: "Camera is waiting for an action.", cameraNote: "Camera actions are available only from the game UI.",
+  cameraIdle: "Camera is waiting for an action.",
   channel: "Channel ID", channelMissing: "Not configured", settingsNote: "Authorization belongs to this Windows user. Citizen bindings remain in the city save.",
   connectTwitch: "Connect Twitch", reconnectTwitch: "Reconnect", disconnectTwitch: "Disconnect Twitch",
   sendPermission: "Send chat messages", permissionAllowed: "Allowed",
@@ -78,6 +98,35 @@ const en: Record<keyof typeof ru, string> = {
 
 export type TextKey = keyof typeof ru;
 export const text = (locale: Locale, key: TextKey): string => (locale === "ru" ? ru : en)[key];
+
+export const showLegacyNotice = (legacyConfig: boolean, modernCredentials: boolean, state: string): boolean =>
+  legacyConfig && !modernCredentials && (state === "Disconnected" || state === "Error");
+
+export function ageDetailText(locale: Locale, age: string, ageYears?: number | null): string {
+  const category = ageText(locale, age);
+  if (typeof ageYears !== "number" || !Number.isFinite(ageYears) || ageYears < 0) return category;
+  const years = Math.floor(ageYears);
+  if (locale === "en") return `${years} ${years === 1 ? "year" : "years"} old`;
+  const lastTwo = years % 100;
+  const last = years % 10;
+  const noun = lastTwo >= 11 && lastTwo <= 14 ? "лет" :
+    last === 1 ? "год" : last >= 2 && last <= 4 ? "года" : "лет";
+  return `${years} ${noun}`;
+}
+
+export function missingReasonText(locale: Locale, reason: string): string {
+  const ru = locale === "ru";
+  switch (reason) {
+    case "EntityAbsent": return ru ? "Жителя больше нет в текущем ECS-мире. Смерть не подтверждена." :
+      "The citizen entity is absent from the current ECS world. Death is not confirmed.";
+    case "EntityDeleted": return ru ? "Игровая сущность жителя помечена к удалению. Смерть не подтверждена." :
+      "The citizen entity is marked for deletion. Death is not confirmed.";
+    case "CitizenComponentMissing": return ru ? "Сущность больше не содержит компонент жителя. Смерть не подтверждена." :
+      "The entity no longer has a Citizen component. Death is not confirmed.";
+    default: return ru ? "Сохранённая привязка не разрешилась в текущем мире. Причина не была записана; история сохранена." :
+      "The saved binding could not be resolved in this world. The reason was not recorded; history is preserved.";
+  }
+}
 
 export function detectLocale(language?: string): Locale {
   const value = language ?? (typeof navigator === "undefined" ? "en" : navigator.language || "en");
@@ -118,7 +167,7 @@ export function dateText(locale: Locale, value?: string): string {
 
 export function lifeText(locale: Locale, status: string): string {
   const key: Record<string, TextKey> = {
-    Active: "lifeActive", Deceased: "lifeDeceased", Missing: "lifeMissing",
+    Active: "lifeActive", Deceased: "lifeDeceased", Missing: "lifeMissing", Unbound: "lifeUnbound",
   };
   return text(locale, key[status] ?? "lifeUnknown");
 }
@@ -156,9 +205,10 @@ export function lifeNumberText(locale: Locale, count: number): string {
   return Number.isFinite(count) && count > 0 ? `${text(locale, "lifeNumber")}${Math.floor(count)}` : "";
 }
 
-export function viewerMetaText(locale: Locale, age: string, lives: number): string {
+export function viewerMetaText(locale: Locale, age: string, lives: number, ageYears?: number | null): string {
   const parts: string[] = [];
-  if (age && ageText(locale, age) !== text(locale, "noData")) parts.push(ageText(locale, age));
+  if (ageYears != null || age && ageText(locale, age) !== text(locale, "noData"))
+    parts.push(ageDetailText(locale, age, ageYears));
   const life = lifeNumberText(locale, lives);
   if (life) parts.push(life);
   return parts.join(" · ");

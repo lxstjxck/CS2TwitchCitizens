@@ -26,6 +26,8 @@ export type LifeSummary = {
   lifeId: string; originalCitizenName: string; twitchDisplayName: string;
   startGameDate: string; endGameDate: string; status: string;
   lastKnownAge: string; lastKnownHome: string; lastKnownWorkplace: string;
+  lastKnownAgeDays?: number | null; lastKnownHomeAddress?: string; missingReason?: string;
+  lastKnownAgeYears?: number | null;
   causeOfDeath: string;
 };
 

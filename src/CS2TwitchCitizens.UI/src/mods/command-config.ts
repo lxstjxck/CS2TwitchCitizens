@@ -22,13 +22,13 @@ export const fieldGroups: Record<CommandName, FieldGroup[]> = {
   me: [
     { category: "Personal details / Личные данные", fields: [{ id: "name", en: "Citizen name", ru: "Имя жителя" }, { id: "ageGroup", en: "Age group", ru: "Возрастная группа" }, { id: "status", en: "Life status", ru: "Статус жизни" }] },
     { category: "Family / Семья", fields: [{ id: "householdSize", en: "Household size", ru: "Размер семьи" }] },
-    { category: "Home / Дом", fields: [{ id: "home", en: "Home building", ru: "Дом" }] },
+    { category: "Home / Дом", fields: [{ id: "home", en: "Home address", ru: "Домашний адрес" }] },
     { category: "Work / Работа", fields: [{ id: "employment", en: "Employment", ru: "Занятость" }, { id: "work", en: "Workplace", ru: "Место работы" }] },
     { category: "Education / Образование", fields: [{ id: "school", en: "School", ru: "Учебное заведение" }] },
-    { category: "Location / Местоположение", fields: [{ id: "currentBuilding", en: "Current building", ru: "Текущее здание" }] },
+    { category: "Location / Местоположение", fields: [{ id: "currentBuilding", en: "Current building and address", ru: "Текущее здание и адрес" }] },
   ],
   find: [{ category: "Location / Местоположение", fields: [{ id: "locationType", en: "Location type", ru: "Тип местоположения" },
-    { id: "currentBuilding", en: "Current building", ru: "Текущее здание" }, { id: "coordinates", en: "Coordinates", ru: "Координаты" }] }],
+    { id: "currentBuilding", en: "Current building and address", ru: "Текущее здание и адрес" }, { id: "coordinates", en: "Coordinates", ru: "Координаты" }] }],
   history: [{ category: "Life history / История жизней", fields: [
     { id: "totalLives", en: "Total lives", ru: "Всего жизней" }, { id: "currentLife", en: "Current life number", ru: "Номер текущей жизни" },
     { id: "status", en: "Status", ru: "Статус" }, { id: "startDate", en: "Start date", ru: "Дата начала" },

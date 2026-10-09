@@ -34,8 +34,19 @@ public sealed class ViewerPanelSnapshot
                 DisplayName = b.DisplayName,
                 CitizenName = b.CitizenName,
                 Age = b.Age,
+                AgeDays = b.AgeDays,
+                AgeYears = ModAgeModel.FromGameDays(b.AgeDays),
+                HomeAddress = b.HomeAddress,
+                HomeBuilding = SafeLabel(b.Home),
+                CurrentBuilding = SafeLabel(b.CurrentBuilding),
+                CurrentAddress = b.CurrentAddress,
+                LocationType = b.LocationType,
+                MissingReason = b.MissingReason,
                 HasHome = !string.IsNullOrEmpty(b.Home),
                 HasWorkplace = !string.IsNullOrEmpty(b.Workplace),
+                Workplace = SafeLabel(b.Workplace),
+                Employment = b.Employment,
+                WorkAddress = b.WorkAddress,
                 IsValid = b.IsValid,
                 PositionAvailable = b.PositionAvailable,
                 CurrentLifeId = b.CurrentLifeId,
@@ -54,9 +65,15 @@ public sealed class ViewerPanelSnapshot
         TwitchDisplayName = life.TwitchDisplayName,
         StartGameDate = life.StartGameDate, EndGameDate = life.EndGameDate,
         Status = life.Status, LastKnownAge = life.LastKnownAge,
+        LastKnownAgeDays = life.LastKnownAgeDays,
+        LastKnownAgeYears = ModAgeModel.FromGameDays(life.LastKnownAgeDays),
         LastKnownWorkplace = life.LastKnownWorkplace,
-        LastKnownHome = life.LastKnownHome, CauseOfDeath = life.CauseOfDeath
+        LastKnownHome = SafeLabel(life.LastKnownHome), LastKnownHomeAddress = life.LastKnownHomeAddress,
+        MissingReason = life.MissingReason, CauseOfDeath = life.CauseOfDeath
     };
+
+    private static string SafeLabel(string? value) => string.IsNullOrWhiteSpace(value) ||
+        value!.StartsWith("Entity(", StringComparison.OrdinalIgnoreCase) ? string.Empty : value;
 }
 
 [DataContract]
@@ -67,10 +84,21 @@ public sealed class ViewerPanelRow
     [DataMember(Name = "displayName")] public string DisplayName { get; set; } = string.Empty;
     [DataMember(Name = "citizenName")] public string CitizenName { get; set; } = string.Empty;
     [DataMember(Name = "age")] public string Age { get; set; } = string.Empty;
+    [DataMember(Name = "ageDays", EmitDefaultValue = false)] public int? AgeDays { get; set; }
+    [DataMember(Name = "ageYears", EmitDefaultValue = false)] public int? AgeYears { get; set; }
+    [DataMember(Name = "homeAddress")] public string HomeAddress { get; set; } = string.Empty;
+    [DataMember(Name = "homeBuilding")] public string HomeBuilding { get; set; } = string.Empty;
+    [DataMember(Name = "currentBuilding")] public string CurrentBuilding { get; set; } = string.Empty;
+    [DataMember(Name = "currentAddress")] public string CurrentAddress { get; set; } = string.Empty;
+    [DataMember(Name = "missingReason")] public string MissingReason { get; set; } = string.Empty;
     [DataMember(Name = "hasHome")] public bool HasHome { get; set; }
     [DataMember(Name = "hasWorkplace")] public bool HasWorkplace { get; set; }
+    [DataMember(Name = "workplace")] public string Workplace { get; set; } = string.Empty;
+    [DataMember(Name = "employment")] public string Employment { get; set; } = string.Empty;
+    [DataMember(Name = "workAddress")] public string WorkAddress { get; set; } = string.Empty;
     [DataMember(Name = "isValid")] public bool IsValid { get; set; }
     [DataMember(Name = "positionAvailable")] public bool PositionAvailable { get; set; }
+    [DataMember(Name = "locationType")] public string LocationType { get; set; } = string.Empty;
     [DataMember(Name = "currentLifeId")] public string CurrentLifeId { get; set; } = string.Empty;
     [DataMember(Name = "totalLives")] public int TotalLives { get; set; }
     [DataMember(Name = "currentLifeStatus")] public string CurrentLifeStatus { get; set; } = string.Empty;
@@ -88,8 +116,12 @@ public sealed class ViewerPanelLife
     [DataMember(Name = "endGameDate")] public string EndGameDate { get; set; } = string.Empty;
     [DataMember(Name = "status")] public string Status { get; set; } = string.Empty;
     [DataMember(Name = "lastKnownAge")] public string LastKnownAge { get; set; } = string.Empty;
+    [DataMember(Name = "lastKnownAgeDays", EmitDefaultValue = false)] public int? LastKnownAgeDays { get; set; }
+    [DataMember(Name = "lastKnownAgeYears", EmitDefaultValue = false)] public int? LastKnownAgeYears { get; set; }
     [DataMember(Name = "lastKnownWorkplace")] public string LastKnownWorkplace { get; set; } = string.Empty;
     [DataMember(Name = "lastKnownHome")] public string LastKnownHome { get; set; } = string.Empty;
+    [DataMember(Name = "lastKnownHomeAddress")] public string LastKnownHomeAddress { get; set; } = string.Empty;
+    [DataMember(Name = "missingReason")] public string MissingReason { get; set; } = string.Empty;
     [DataMember(Name = "causeOfDeath")] public string CauseOfDeath { get; set; } = string.Empty;
 }
 

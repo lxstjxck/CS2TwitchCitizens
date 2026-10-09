@@ -146,6 +146,13 @@ namespace CS2TwitchCitizens.Mod
             }
         }
 
+        public void StopFollowingIf(Entity citizen)
+        {
+            if (citizen == Entity.Null) return;
+            var orbit = _world.GetExistingSystemManaged<CameraUpdateSystem>()?.orbitCameraController;
+            if (orbit != null && orbit.followedEntity == citizen) StopFollowing();
+        }
+
         private static float HorizontalDistance(Vector3 a, Vector3 b)
         {
             var dx = a.x - b.x;

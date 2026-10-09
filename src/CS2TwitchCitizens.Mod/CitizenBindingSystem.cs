@@ -24,6 +24,8 @@ namespace CS2TwitchCitizens.Mod
         // A !join may inspect the city's Citizen query; cap that work to one command per update.
         private const int MaxCommandsPerUpdate = 1;
         private EntityQuery _citizens;
+        private EntityQuery _timeDataQuery;
+        private SimulationSystem? _simulationSystem;
         private ViewerBindingRegistry<Entity> _bindings = new ViewerBindingRegistry<Entity>();
         private ViewerLifeJournal<Entity> _lives = new ViewerLifeJournal<Entity>();
         private List<ViewerLifeAccount<Entity>>? _pendingRestore;
@@ -48,6 +50,8 @@ namespace CS2TwitchCitizens.Mod
             _citizens = GetEntityQuery(
                 ComponentType.ReadOnly<Citizen>(),
                 ComponentType.Exclude<Deleted>());
+            _timeDataQuery = GetEntityQuery(ComponentType.ReadOnly<TimeData>());
+            _simulationSystem = World.GetExistingSystemManaged<SimulationSystem>();
             RequireForUpdate(_citizens);
             _camera = new CitizenCameraService(World);
             _eligibility = new CitizenEligibilityService(EntityManager, _citizens, entity => _lives.IsClaimed(entity));
@@ -104,7 +108,7 @@ namespace CS2TwitchCitizens.Mod
             if (_loadFailed) return;
             try
             {
-                _lives.Restore(_pendingRestore ?? new List<ViewerLifeAccount<Entity>>(), IsValidCitizen);
+                _lives.Restore(_pendingRestore ?? new List<ViewerLifeAccount<Entity>>(), IsValidCitizen, InvalidCitizenReason);
                 foreach (var account in _lives.Accounts)
                 {
                     var life = account.Current;
@@ -166,6 +170,9 @@ namespace CS2TwitchCitizens.Mod
                     writer.Write(life.LastKnownWorkplace);
                     writer.Write(life.LastKnownHome);
                     writer.Write(life.CauseOfDeath);
+                    writer.Write(life.LastKnownAgeDays ?? -1);
+                    writer.Write(life.LastKnownHomeAddress);
+                    writer.Write(life.MissingReason);
                 }
             }
             Mod.Log.Info($"[CS2TwitchCitizens] LIFE serialized format={ViewerLifeSaveFormat.Version} viewers={_lives.Accounts.Count}");
@@ -212,6 +219,14 @@ namespace CS2TwitchCitizens.Mod
                         life.LastKnownWorkplace = ReadString(ref reader);
                         life.LastKnownHome = ReadString(ref reader);
                         life.CauseOfDeath = ReadString(ref reader);
+                        if (version >= 2)
+                        {
+                            var ageDays = -1;
+                            reader.Read(out ageDays);
+                            life.LastKnownAgeDays = ageDays >= 0 ? ageDays : null;
+                            life.LastKnownHomeAddress = ReadString(ref reader);
+                            life.MissingReason = ReadString(ref reader);
+                        }
                         account.Lives.Add(life);
                     }
                     accounts.Add(account);
@@ -408,6 +423,25 @@ namespace CS2TwitchCitizens.Mod
             entity != Entity.Null && EntityManager.Exists(entity) &&
             EntityManager.HasComponent<Citizen>(entity) && !EntityManager.HasComponent<Deleted>(entity);
 
+        private string InvalidCitizenReason(Entity entity)
+        {
+            if (entity == Entity.Null || !EntityManager.Exists(entity)) return "EntityAbsent";
+            if (EntityManager.HasComponent<Deleted>(entity)) return "EntityDeleted";
+            if (!EntityManager.HasComponent<Citizen>(entity)) return "CitizenComponentMissing";
+            return "UnresolvedBinding";
+        }
+
+        private int? GetAgeDays(Citizen citizen)
+        {
+            if (_simulationSystem == null || _timeDataQuery.IsEmptyIgnoreFilter) return null;
+            try
+            {
+                var days = citizen.GetAgeInDays(_simulationSystem.frameIndex, _timeDataQuery.GetSingleton<TimeData>());
+                return CitizenFactPolicy.AgeDays(days);
+            }
+            catch { return null; }
+        }
+
         private string GetGameDate()
         {
             var time = World.GetExistingSystemManaged<TimeSystem>();
@@ -436,7 +470,7 @@ namespace CS2TwitchCitizens.Mod
                 {
                     _missingObservations.TryGetValue(viewerId, out var misses);
                     _missingObservations[viewerId] = ++misses;
-                    if (misses >= 2 && _lives.MarkMissing(viewerId))
+                    if (misses >= 2 && _lives.MarkMissing(viewerId, InvalidCitizenReason(entity)))
                     {
                         _missingObservations.Remove(viewerId);
                         _bindings.Remove(viewerId);
@@ -454,8 +488,11 @@ namespace CS2TwitchCitizens.Mod
         private void CaptureLifeSnapshot(string viewerId, Entity entity)
         {
             if (!EntityManager.Exists(entity) || !EntityManager.HasComponent<Citizen>(entity)) return;
-            var age = EntityManager.GetComponentData<Citizen>(entity).GetAge().ToString();
+            var citizen = EntityManager.GetComponentData<Citizen>(entity);
+            var age = citizen.GetAge().ToString();
+            var ageDays = GetAgeDays(citizen);
             var home = string.Empty;
+            var homeAddress = string.Empty;
             var workplace = string.Empty;
             if (EntityManager.HasComponent<HouseholdMember>(entity))
             {
@@ -463,7 +500,11 @@ namespace CS2TwitchCitizens.Mod
                 if (EntityManager.Exists(household) && EntityManager.HasComponent<PropertyRenter>(household))
                 {
                     var property = EntityManager.GetComponentData<PropertyRenter>(household).m_Property;
-                    if (EntityManager.Exists(property)) home = GetPlaceLabel(property, "home available");
+                    if (EntityManager.Exists(property))
+                    {
+                        home = GetPlaceLabel(property, "home available");
+                        homeAddress = GetBuildingAddress(property);
+                    }
                 }
             }
             if (EntityManager.HasComponent<Worker>(entity))
@@ -471,7 +512,7 @@ namespace CS2TwitchCitizens.Mod
                 var work = EntityManager.GetComponentData<Worker>(entity).m_Workplace;
                 if (EntityManager.Exists(work)) workplace = GetPlaceLabel(work, "workplace available");
             }
-            _lives.UpdateSnapshot(viewerId, age, home, workplace);
+            _lives.UpdateSnapshot(viewerId, age, home, workplace, ageDays, homeAddress);
         }
 
         private string GetPlaceLabel(Entity place, string fallback)
@@ -482,6 +523,19 @@ namespace CS2TwitchCitizens.Mod
                 return string.IsNullOrWhiteSpace(label) ? fallback : label!;
             }
             catch { return fallback; }
+        }
+
+        private string GetBuildingAddress(Entity building)
+        {
+            if (building == Entity.Null || !EntityManager.Exists(building)) return string.Empty;
+            try
+            {
+                if (!BuildingUtils.GetAddress(EntityManager, building, out var street, out var number) ||
+                    street == Entity.Null || !EntityManager.Exists(street) || number <= 0) return string.Empty;
+                var name = World.GetExistingSystemManaged<NameSystem>()?.GetRenderedLabelName(street);
+                return CitizenFactPolicy.Address(name, number);
+            }
+            catch { return string.Empty; }
         }
 
         private void History(TwitchCommand command)
@@ -569,6 +623,37 @@ namespace CS2TwitchCitizens.Mod
         public CitizenFocusStatus StopFollowing() =>
             _camera?.StopFollowing() ?? CitizenFocusStatus.CameraUnavailable;
 
+        /// <summary>Called only by the local UI bridge on the game thread.</summary>
+        public bool UnbindViewer(string viewerId)
+        {
+            if (!_loadReady || _loadFailed || string.IsNullOrWhiteSpace(viewerId)) return false;
+            if (!_lives.TryGet(viewerId, out var account) || account?.Current == null) return false;
+            var entity = account.Current.CitizenKey;
+            if (account.Current.Status == ViewerLifeStatus.Active) CaptureLifeSnapshot(viewerId, entity);
+            if (!_lives.Unbind(viewerId, GetGameDate())) return false;
+            _bindings.Remove(viewerId);
+            _missingObservations.Remove(viewerId);
+            _identities.Remove(viewerId);
+            _commandGate.ForgetViewer(viewerId);
+            _camera?.StopFollowingIf(entity);
+            return true;
+        }
+
+        /// <summary>Removes only this city's viewer record; the NPC remains in the city.</summary>
+        public bool DeleteViewer(string viewerId)
+        {
+            if (!_loadReady || _loadFailed || string.IsNullOrWhiteSpace(viewerId)) return false;
+            if (!_lives.TryGet(viewerId, out var account) || account?.Current == null) return false;
+            var entity = account.Current.Status == ViewerLifeStatus.Active ? account.Current.CitizenKey : Entity.Null;
+            if (!_lives.Delete(viewerId)) return false;
+            _bindings.Remove(viewerId);
+            _missingObservations.Remove(viewerId);
+            _identities.Remove(viewerId);
+            _commandGate.ForgetViewer(viewerId);
+            _camera?.StopFollowingIf(entity);
+            return true;
+        }
+
         public bool TryPollFocus(out CitizenFocusStatus status)
         {
             status = CitizenFocusStatus.CameraUnavailable;
@@ -621,8 +706,11 @@ namespace CS2TwitchCitizens.Mod
                         TwitchDisplayName = life.TwitchDisplayName,
                         StartGameDate = life.StartGameDate, EndGameDate = life.EndGameDate,
                         Status = life.Status.ToString(), LastKnownAge = life.LastKnownAge,
+                        LastKnownAgeDays = life.LastKnownAgeDays,
                         LastKnownHome = life.LastKnownHome,
+                        LastKnownHomeAddress = life.LastKnownHomeAddress,
                         LastKnownWorkplace = life.LastKnownWorkplace,
+                        MissingReason = life.MissingReason,
                         CauseOfDeath = life.CauseOfDeath
                     });
                 }
@@ -636,6 +724,7 @@ namespace CS2TwitchCitizens.Mod
                 CurrentLifeId = current?.LifeId ?? string.Empty,
                 TotalLives = account?.Lives.Count ?? 0,
                 CurrentLifeStatus = current?.Status.ToString() ?? string.Empty,
+                MissingReason = current?.MissingReason ?? string.Empty,
                 CurrentLife = current == null ? null : ToLifeInfo(current),
                 PreviousLives = previous.ToArray(),
                 IsValid = (current == null || current.Status == ViewerLifeStatus.Active) && IsValidCitizen(entity)
@@ -643,8 +732,12 @@ namespace CS2TwitchCitizens.Mod
             if (!info.IsValid)
             {
                 info.Age = current?.LastKnownAge ?? string.Empty;
+                info.AgeDays = current?.LastKnownAgeDays;
                 info.Home = current?.LastKnownHome ?? string.Empty;
+                info.HomeAddress = current?.LastKnownHomeAddress ?? string.Empty;
                 info.Workplace = current?.LastKnownWorkplace ?? string.Empty;
+                if (current?.Status == ViewerLifeStatus.Active)
+                    info.MissingReason = InvalidCitizenReason(entity);
                 return info;
             }
 
@@ -654,9 +747,14 @@ namespace CS2TwitchCitizens.Mod
             else
                 info.CitizenName = identity?.AssignedName ?? string.Empty;
 
-            info.Age = EntityManager.GetComponentData<Citizen>(entity).GetAge().ToString();
+            var citizen = EntityManager.GetComponentData<Citizen>(entity);
+            info.Age = citizen.GetAge().ToString();
+            info.AgeDays = GetAgeDays(citizen);
             if (info.CurrentLife != null)
+            {
                 info.CurrentLife.LastKnownAge = info.Age;
+                info.CurrentLife.LastKnownAgeDays = info.AgeDays;
+            }
             var homeEntity = Entity.Null;
             var workEntity = Entity.Null;
             var currentEntity = Entity.Null;
@@ -668,32 +766,65 @@ namespace CS2TwitchCitizens.Mod
                 if (EntityManager.Exists(household) && EntityManager.HasComponent<PropertyRenter>(household))
                 {
                     homeEntity = EntityManager.GetComponentData<PropertyRenter>(household).m_Property;
-                    if (EntityManager.Exists(homeEntity)) info.Home = GetPlaceLabel(homeEntity, string.Empty);
+                    if (EntityManager.Exists(homeEntity))
+                    {
+                        info.Home = GetPlaceLabel(homeEntity, string.Empty);
+                        info.HomeAddress = GetBuildingAddress(homeEntity);
+                    }
                 }
             }
             if (EntityManager.HasComponent<Worker>(entity))
             {
                 info.Employment = "yes";
                 workEntity = EntityManager.GetComponentData<Worker>(entity).m_Workplace;
-                if (EntityManager.Exists(workEntity)) info.Workplace = GetPlaceLabel(workEntity, string.Empty);
+                if (EntityManager.Exists(workEntity))
+                {
+                    info.Workplace = GetPlaceLabel(workEntity, string.Empty);
+                    var building = workEntity;
+                    if (EntityManager.HasComponent<PropertyRenter>(workEntity))
+                        building = EntityManager.GetComponentData<PropertyRenter>(workEntity).m_Property;
+                    info.WorkAddress = GetBuildingAddress(building);
+                }
             }
-            else info.Employment = "no";
+            else info.Employment = "unknown";
             if (EntityManager.HasComponent<Game.Citizens.Student>(entity))
             {
+                if (info.Employment != "yes") info.Employment = "student";
                 var school = EntityManager.GetComponentData<Game.Citizens.Student>(entity).m_School;
                 if (EntityManager.Exists(school)) info.School = GetPlaceLabel(school, string.Empty);
             }
             if (EntityManager.HasComponent<CurrentBuilding>(entity))
             {
                 currentEntity = EntityManager.GetComponentData<CurrentBuilding>(entity).m_CurrentBuilding;
-                if (EntityManager.Exists(currentEntity)) info.CurrentBuilding = GetPlaceLabel(currentEntity, string.Empty);
+                if (EntityManager.Exists(currentEntity))
+                {
+                    info.CurrentBuilding = GetPlaceLabel(currentEntity, string.Empty);
+                    info.CurrentAddress = GetBuildingAddress(currentEntity);
+                }
             }
 
-            if (currentEntity != Entity.Null && EntityManager.Exists(currentEntity))
-                info.LocationType = currentEntity == homeEntity ? "home" : currentEntity == workEntity ? "work" : "building";
+            var inTransport = false;
+            if (EntityManager.HasComponent<CurrentTransport>(entity))
+            {
+                var transport = EntityManager.GetComponentData<CurrentTransport>(entity).m_CurrentTransport;
+                inTransport = transport != Entity.Null && EntityManager.Exists(transport);
+            }
+            if (inTransport)
+                info.LocationType = "transport";
+            else if (currentEntity != Entity.Null && EntityManager.Exists(currentEntity))
+            {
+                var workBuilding = workEntity;
+                if (workEntity != Entity.Null && EntityManager.Exists(workEntity) &&
+                    EntityManager.HasComponent<PropertyRenter>(workEntity))
+                    workBuilding = EntityManager.GetComponentData<PropertyRenter>(workEntity).m_Property;
+                info.LocationType = currentEntity == homeEntity ? "home" :
+                    currentEntity == workBuilding ? "work" : "building";
+            }
 
             info.Position = LocateCitizen(entity);
             info.PositionAvailable = info.Position.HasValue;
+            if (info.CurrentLife != null)
+                info.CurrentLife.LastKnownHomeAddress = info.HomeAddress;
             return info;
         }
 
@@ -702,7 +833,9 @@ namespace CS2TwitchCitizens.Mod
             TwitchDisplayName = life.TwitchDisplayName, StartGameDate = life.StartGameDate,
             EndGameDate = life.EndGameDate, Status = life.Status.ToString(),
             LastKnownAge = life.LastKnownAge, LastKnownHome = life.LastKnownHome,
-            LastKnownWorkplace = life.LastKnownWorkplace, CauseOfDeath = life.CauseOfDeath
+            LastKnownAgeDays = life.LastKnownAgeDays, LastKnownHomeAddress = life.LastKnownHomeAddress,
+            LastKnownWorkplace = life.LastKnownWorkplace, MissingReason = life.MissingReason,
+            CauseOfDeath = life.CauseOfDeath
         };
 
         private sealed class CitizenDisplayIdentity
