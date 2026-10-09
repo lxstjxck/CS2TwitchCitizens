@@ -8,7 +8,10 @@ public static class TwitchCommandParser
         string? login,
         string? displayName,
         DateTimeOffset receivedAt,
-        out TwitchCommand? command)
+        out TwitchCommand? command,
+        string messageId = "",
+        bool isModerator = false,
+        bool isBroadcaster = false)
     {
         command = null;
         if (message is null || twitchUserId is null)
@@ -28,7 +31,7 @@ public static class TwitchCommandParser
         var arguments = separator < 0 ? string.Empty : input.Substring(separator + 1).Trim();
         command = new TwitchCommand(
             twitchUserId, login ?? string.Empty, displayName ?? string.Empty,
-            verb.ToLowerInvariant(), arguments, receivedAt);
+            verb.ToLowerInvariant(), arguments, receivedAt, messageId, isModerator, isBroadcaster);
         return true;
     }
 }

@@ -48,7 +48,15 @@ public sealed class EventSubChatEvent
     [DataMember(Name = "chatter_user_id")] public string? ChatterUserId { get; set; }
     [DataMember(Name = "chatter_user_login")] public string? ChatterUserLogin { get; set; }
     [DataMember(Name = "chatter_user_name")] public string? ChatterUserName { get; set; }
+    [DataMember(Name = "message_id")] public string? MessageId { get; set; }
+    [DataMember(Name = "badges")] public EventSubBadge[]? Badges { get; set; }
     [DataMember(Name = "message")] public EventSubChatMessage? Message { get; set; }
+}
+
+[DataContract]
+public sealed class EventSubBadge
+{
+    [DataMember(Name = "set_id")] public string? SetId { get; set; }
 }
 
 [DataContract]
@@ -103,7 +111,10 @@ public static class EventSubProtocol
             eventData.ChatterUserLogin,
             eventData.ChatterUserName,
             receivedAt,
-            out command) || (command?.Command != "!join" && command?.Command != "!me" && command?.Command != "!find" && command?.Command != "!history"))
+            out command,
+            eventData.MessageId ?? string.Empty,
+            eventData.Badges?.Any(b => b.SetId == "moderator" || b.SetId == "broadcaster") == true,
+            eventData.ChatterUserId == broadcasterUserId) || (command?.Command != "!join" && command?.Command != "!me" && command?.Command != "!find" && command?.Command != "!history"))
         {
             command = null;
             return false;

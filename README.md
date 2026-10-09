@@ -1,6 +1,8 @@
 # CS2 Twitch Citizens
 
-CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.7.0 adds in-game Twitch authorization. The OAuth and UI paths still need a running-game test.
+CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.8.3 reorganizes the Commands tab with compact basic settings, expandable advanced settings, contextual help, and a demonstration reply. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the v0.8.3 UI still needs an in-game check.
+
+Open the in-game **Commands** tab to enable commands, set viewer cooldowns and permissions, select reply fields, choose RU/EN replies, and preview a sample. Settings apply immediately and persist globally in `%LOCALAPPDATA%/CS2TwitchCitizens/commands.json`, separate from city saves and encrypted Twitch credentials. See [command fields and limits](COMMAND_FIELDS.md) for the supported field matrix.
 
 ## Register the Twitch application
 

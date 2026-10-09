@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.3 — Commands tab UX redesign (game UI verification pending)
+
+- Reorganized the Commands tab into compact global settings, four command tabs, basic command controls, and one advanced section at a time. All v1 command settings and saved values remain supported; resets now ask for confirmation in the advanced sections.
+- Added RU/EN hover and click help based on actual cooldown, reply queue, missing-data, permission, and field-source behavior. Field categories now use short localized names and show only fields supported by each command.
+- Added an explicitly labeled demonstration reply that follows selected fields, reply language, missing-data behavior, and length limits. No sample message is sent to Twitch.
+- Added UI regression checks for old and incomplete settings, command views, advanced sections, help, field selection, preview, RU/EN, and persistence shape. The user confirmed Twitch replies and bindings with v0.8.2 in game; this UI layout is not yet verified in game.
+
+## 0.8.2 — Twitch chat permission recovery (game verification pending)
+
+- Validate saved and refreshed tokens for `user:read:chat` and report `user:write:chat` separately. A read-only token can keep EventSub connected while chat replies are blocked with an explicit permission state.
+- Show chat sending permission in Twitch settings and add a separate Device Code action to renew both scopes. Existing credentials are replaced through DPAPI only after validation, and reauthorization does not clear city bindings, life history, or command settings.
+- Log safe reasons for skipped and rejected replies without message text or tokens. Added read-only scope, write-scope rejection, UI binding, and Helix HTTP/`is_sent` checks. In-game authorization and chat delivery remain to be verified.
+- Allow commands sent by the connected broadcaster to receive replies. The previous silent self-message guard discarded every reply to the broadcaster's own `!me`, `!find`, and `!history` commands, matching the local session log. Added a queue regression check for broadcaster and viewer replies and missing-scope logging.
+
+## 0.8.1 — Commands tab HUD crash fix (game verification pending)
+
+- Replaced the Commands tab's native `<select>`, `<option>`, `<details>`, `<summary>`, number and checkbox inputs with game `Button` controls and a plain text numeric input. React DOM reads `node.options.length` while mounting `<select>`; the game's UI DOM does not provide that collection, matching the reported `undefined.length` crash.
+- Added a strict UI data boundary for command settings and field catalogs. Missing, null, or wrongly typed `selectedFields` become safe arrays; valid settings survive normalization and round trips. The tab shows an in-panel recovery notice for incomplete configuration or a corrupt settings file, a save error message, and a local render error fallback with a reset action.
+- Added render and normalization checks for empty/missing JSON, incomplete commands, invalid field arrays/catalogs, RU/EN, all command views, repeated tab sequences, and preserved custom values. Game runtime confirmation remains pending.
+
+## 0.8.0 — Configurable Twitch commands (integration pending)
+
+- Added global, versioned command settings with in-game controls for enablement, per viewer and shared cooldowns, permissions, selected fields, reply language, missing-data behavior, length and outgoing queue limits, and reset actions. Corrupt settings fall back to defaults without touching city saves or credentials.
+- Added game-thread snapshots for name, age group, status, household size, home/work/school labels, current building/location type/position, and journal history. Chat replies use only selected supported fields. `!find` leaves the camera alone; join eligibility and Entity-aware save format remain intact.
+- Added Device Code `user:write:chat` scope, reply threading with the chat message ID, and bounded asynchronous Helix chat sending. Old read-only credentials require reauthorization. Disconnect and city changes clear queued replies; self replies are suppressed.
+- C# command/OAuth/mock HTTP checks, TypeScript typecheck, UI checks, and official Code Mod/UI builds passed. Webpack reports the existing Sass warning. Runtime behavior and visual layout remain unverified until Cities: Skylines II is run.
+
 ## 0.7.0 — Twitch OAuth and in-game connection (integration pending)
 
 - Added Twitch public-client Device Code authorization in C#, with a single cancellable session, `user:read:chat`, code expiry, Twitch polling interval, denial and rate-limit handling, token validation, refresh rotation, and restart recovery.

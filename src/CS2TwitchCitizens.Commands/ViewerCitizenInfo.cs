@@ -12,6 +12,10 @@ public sealed class ViewerCitizenInfo
     public string Home { get; set; } = string.Empty;
     public string Workplace { get; set; } = string.Empty;
     public string CurrentBuilding { get; set; } = string.Empty;
+    public string LocationType { get; set; } = string.Empty;
+    public string HouseholdSize { get; set; } = string.Empty;
+    public string Employment { get; set; } = string.Empty;
+    public string School { get; set; } = string.Empty;
     public bool IsValid { get; set; }
     public bool PositionAvailable { get; set; }
     public CitizenPosition? Position { get; set; }

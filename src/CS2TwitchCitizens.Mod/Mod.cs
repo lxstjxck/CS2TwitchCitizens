@@ -13,6 +13,7 @@ namespace CS2TwitchCitizens.Mod
         internal static readonly ILog Log = LogManager.GetLogger("CS2TwitchCitizens");
         internal static TwitchCommandQueue? CommandQueue { get; private set; }
         internal static TwitchConnectionController? Connection { get; private set; }
+        internal static CommandSettingsController? CommandSettings { get; private set; }
         internal static bool TwitchEnabled => Connection != null;
 
         public void OnLoad(UpdateSystem updateSystem)
@@ -22,6 +23,7 @@ namespace CS2TwitchCitizens.Mod
             updateSystem.UpdateAt<CitizenBindingSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<ViewerPanelUISystem>(SystemUpdatePhase.UIUpdate);
             var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CS2TwitchCitizens");
+            CommandSettings = new CommandSettingsController(new CommandSettingsStore(Path.Combine(directory, "commands.json")));
             var path = Path.Combine(directory, "twitch.config.json");
             var clientId = TwitchClientId.Value;
             if (string.IsNullOrWhiteSpace(clientId))
@@ -34,7 +36,7 @@ namespace CS2TwitchCitizens.Mod
             }
             Connection = new TwitchConnectionController(clientId,
                 new TwitchCredentialStore(Path.Combine(directory, "twitch.credentials.dpapi")),
-                new TwitchOAuthClient(), CommandQueue, message => Log.Info(message), legacy);
+                new TwitchOAuthClient(), CommandQueue, message => Log.Info(message), legacy, CommandSettings);
             Connection.Start();
         }
 
@@ -42,6 +44,7 @@ namespace CS2TwitchCitizens.Mod
         {
             Connection?.Dispose();
             Connection = null;
+            CommandSettings = null;
             CommandQueue = null;
         }
     }

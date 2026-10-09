@@ -14,6 +14,8 @@ namespace CS2TwitchCitizens.Mod
         private ValueBinding<string> _snapshot = null!;
         private ValueBinding<string> _focusResult = null!;
         private ValueBinding<string> _auth = null!;
+        private ValueBinding<string> _commandSettings = null!;
+        private ValueBinding<string> _commandSettingsStatus = null!;
         private DateTime _nextRefresh;
         private int _focusSequence;
         private string? _pendingViewerId;
@@ -28,9 +30,17 @@ namespace CS2TwitchCitizens.Mod
             AddBinding(_focusResult);
             _auth = new ValueBinding<string>(Group, "auth", new CS2TwitchCitizens.Twitch.TwitchAuthView().ToJson(), null, null);
             AddBinding(_auth);
+            _commandSettings = new ValueBinding<string>(Group, "commandSettings",
+                (Mod.CommandSettings?.Current ?? CommandSettings.Defaults()).ToJson(), null, null);
+            AddBinding(_commandSettings);
+            _commandSettingsStatus = new ValueBinding<string>(Group, "commandSettingsStatus",
+                Mod.CommandSettings?.LoadFailed == true ? "Recovered" : string.Empty, null, null);
+            AddBinding(_commandSettingsStatus);
+            AddBinding(new TriggerBinding<string>(Group, "updateCommandSettings", UpdateCommandSettings, null));
             AddBinding(new TriggerBinding<string>(Group, "connectTwitch", _ => Mod.Connection?.Connect(), null));
             AddBinding(new TriggerBinding<string>(Group, "cancelTwitch", _ => Mod.Connection?.Cancel(), null));
             AddBinding(new TriggerBinding<string>(Group, "reconnectTwitch", _ => Mod.Connection?.Reconnect(), null));
+            AddBinding(new TriggerBinding<string>(Group, "reauthorizeTwitch", _ => Mod.Connection?.Reauthorize(), null));
             AddBinding(new TriggerBinding<string>(Group, "disconnectTwitch", _ => Mod.Connection?.Disconnect(), null));
             AddBinding(new TriggerBinding<string>(Group, "openTwitchVerification", _ => Mod.Connection?.OpenVerification(), null));
             AddBinding(new TriggerBinding<string>(Group, "focusCitizen", Focus, null));
@@ -61,6 +71,19 @@ namespace CS2TwitchCitizens.Mod
                 Mod.Connection?.UserId ?? string.Empty, gameLoaded, viewers);
             _snapshot.Update(snapshot.ToJson());
             _auth.Update(auth.ToJson());
+            _commandSettings.Update((Mod.CommandSettings?.Current ?? CommandSettings.Defaults()).ToJson());
+        }
+
+        private void UpdateCommandSettings(string json)
+        {
+            try
+            {
+                Mod.CommandSettings?.Update(json);
+                _commandSettings.Update((Mod.CommandSettings?.Current ?? CommandSettings.Defaults()).ToJson());
+                _commandSettingsStatus.Update(string.Empty);
+            }
+            catch (Exception ex) { _commandSettingsStatus.Update("SaveFailed");
+                Mod.Log.Info("[CS2TwitchCitizens] Command settings update failed: " + ex.GetType().Name); }
         }
 
         private void Focus(string viewerId)

@@ -1,5 +1,15 @@
 # Technical findings — CS2 Twitch Citizens 0.3.0
 
+## v0.8.1 Commands tab crash
+
+The 0.8.0 Commands tab introduced native `<select>` elements for response language, missing-data behavior, and permission. The installed `react-dom` implementation's `updateOptions` reads `node.options.length` when mounting a single-select control (`node_modules/react-dom/cjs/react-dom.development.js`, around lines 2107–2137). The game log reports `Cannot read properties of undefined (reading 'length')` on the first tab open. The deployed module has nine physical lines with no source map, so `JS :15:23` cannot be mapped to TypeScript directly. The missing value is consistent with the game's DOM not exposing `select.options`; this is a source-level diagnosis, not a runtime confirmation. Version 0.8.1 uses the already-working game `Button` component for these choices and removes other unproven native controls from that tab. It also validates settings and catalogs before render and has a local error fallback. Confirmation still requires opening the tab in Cities: Skylines II.
+
+## v0.8.0 command findings
+
+The inspected local `Game.dll` exposes `Citizen.GetAge`, `HouseholdMember`, `HouseholdCitizen`, `PropertyRenter`, `Worker`, `Student`, `CurrentBuilding`, `NameSystem`, and `SelectedInfoUISystem.TryGetPosition`. The new command snapshot reads these only on the game thread. The [field matrix](COMMAND_FIELDS.md) separates supported values from partial and unsupported requests. The Twitch networking layer receives immutable text and message IDs, never `EntityManager` or raw `Entity` values. Twitch's [Helix Send Chat Message reference](https://dev.twitch.tv/docs/api/reference) confirms `user:write:chat`, `reply_parent_message_id`, the 500 character limit, and `is_sent`.
+
+The official 0.8.0 build required the installed `CSII_UNITYVERSION` in the user environment for ModPostProcessor. This session set it to the existing process value `2022.3.62f2` for the build and restored the previous user value afterward. The official postprocessor, Burst platforms, DeployWIP, UI webpack, and deployed version checks passed. Runtime command/chat behavior is still unverified.
+
 ## v0.7.0 OAuth findings
 
 - Twitch's public Device Code Flow uses `POST /oauth2/device` with `client_id` and `scopes`, then `POST /oauth2/token` with the device code and device grant type. The public client does not need a client secret. Device responses supply `interval` and `expires_in`; the mod follows both. `GET /oauth2/validate` supplies the account user ID and login and confirms `user:read:chat`.

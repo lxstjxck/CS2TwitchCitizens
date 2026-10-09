@@ -17,6 +17,14 @@ internal static class OAuthChecks
         Check(token?.AccessToken == "access-1" && token?.RefreshToken == "refresh-1");
         var identity = await oauth.ValidateAsync("public-client", token!.AccessToken, CancellationToken.None);
         Check(identity.UserId == "42" && identity.Login == "streamer");
+        using (var readOnly = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:read:chat"))))
+        {
+            var limited = await readOnly.ValidateAsync("public-client", "read-only", CancellationToken.None, false);
+            Check(limited.Scopes.Contains("user:read:chat") && !limited.Scopes.Contains("user:write:chat"));
+            await Expect<UnauthorizedAccessException>(() => readOnly.ValidateAsync("public-client", "read-only", CancellationToken.None));
+        }
+        using (var noRead = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:write:chat"))))
+            await Expect<UnauthorizedAccessException>(() => noRead.ValidateAsync("public-client", "write-only", CancellationToken.None, false));
         Check(await oauth.GetDisplayNameAsync("public-client", token.AccessToken, CancellationToken.None) == "Streamer");
         var refreshed = await oauth.RefreshAsync("public-client", token.RefreshToken, CancellationToken.None);
         Check(refreshed.AccessToken == "access-2" && refreshed.RefreshToken == "refresh-2");
@@ -36,9 +44,11 @@ internal static class OAuthChecks
         cancelled.Cancel();
         await Expect<OperationCanceledException>(async () => await oauth.RequestDeviceAsync("public-client", cancelled.Token));
 
-        var view = new TwitchAuthView { State = "Pending", UserCode = "ABCD", VerificationUri = "https://www.twitch.tv/activate",
+        var view = new TwitchAuthView { State = "Pending", WritePermission = "Checking",
+            UserCode = "ABCD", VerificationUri = "https://www.twitch.tv/activate",
             Login = "streamer" }.ToJson();
         Check(!view.Contains("access-1") && !view.Contains("refresh-1") && !view.Contains("device-1"));
+        Check(view.Contains("\"writePermission\":\"Checking\"") && view.Contains("\"reauthorizationState\":\"Idle\""));
 
         var path = Path.Combine(Path.GetTempPath(), "cs2twitchcitizens-check-" + Guid.NewGuid().ToString("N"), "credentials.dpapi");
         var store = new TwitchCredentialStore(path);
@@ -54,7 +64,7 @@ internal static class OAuthChecks
         }
         finally { if (File.Exists(path)) File.Delete(path); Directory.Delete(Path.GetDirectoryName(path)!, true); }
         await Expect<Exception>(() => { new TwitchCredentialStore(Path.GetTempPath()).Save(new TwitchCredentials()); return Task.CompletedTask; });
-        Console.WriteLine("PASS: OAuth device, pending, validation, refresh rotation, revoke, DPAPI, UI secret isolation");
+        Console.WriteLine("PASS: OAuth device, read/write scopes, refresh rotation, revoke, DPAPI, UI secret isolation");
     }
 
     private static void Check(bool condition) { if (!condition) throw new Exception("OAuth check failed."); }
@@ -79,6 +89,18 @@ internal static class OAuthChecks
         }
     }
 
+    private sealed class ScopeHandler : HttpMessageHandler
+    {
+        private readonly string _scope;
+        public ScopeHandler(string scope) { _scope = scope; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Check(request.RequestUri!.AbsolutePath.EndsWith("/validate"));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(
+                "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"" + _scope + "\"]}") });
+        }
+    }
+
     private sealed class MockHandler : HttpMessageHandler
     {
         public int Requests { get; private set; }
@@ -91,7 +113,7 @@ internal static class OAuthChecks
             HttpStatusCode status = HttpStatusCode.OK;
             if (path.EndsWith("/device"))
             {
-                Check(body.Contains("scopes=user%3Aread%3Achat") && body.Contains("client_id=public-client"));
+                Check(body.Contains("user%3Aread%3Achat") && body.Contains("user%3Awrite%3Achat") && body.Contains("client_id=public-client"));
                 json = "{\"device_code\":\"device-1\",\"user_code\":\"ABCD\",\"verification_uri\":\"https://www.twitch.tv/activate\",\"expires_in\":120,\"interval\":5}";
             }
             else if (path.EndsWith("/token") && body.Contains("device_code"))
@@ -103,7 +125,7 @@ internal static class OAuthChecks
             else if (path.EndsWith("/validate"))
             {
                 Check(request.Headers.Authorization?.Scheme == "OAuth");
-                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\"]}";
+                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\",\"user:write:chat\"]}";
             }
             else if (path.EndsWith("/users"))
             {

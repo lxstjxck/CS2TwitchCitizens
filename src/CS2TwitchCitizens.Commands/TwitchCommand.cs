@@ -9,7 +9,10 @@ public sealed class TwitchCommand
         string displayName,
         string command,
         string arguments,
-        DateTimeOffset receivedAt)
+        DateTimeOffset receivedAt,
+        string messageId = "",
+        bool isModerator = false,
+        bool isBroadcaster = false)
     {
         if (string.IsNullOrWhiteSpace(twitchUserId))
             throw new ArgumentException("A Twitch user ID is required.", nameof(twitchUserId));
@@ -20,6 +23,9 @@ public sealed class TwitchCommand
         Command = command ?? throw new ArgumentNullException(nameof(command));
         Arguments = arguments ?? string.Empty;
         ReceivedAt = receivedAt;
+        MessageId = messageId ?? string.Empty;
+        IsModerator = isModerator;
+        IsBroadcaster = isBroadcaster;
     }
 
     public string TwitchUserId { get; }
@@ -28,4 +34,7 @@ public sealed class TwitchCommand
     public string Command { get; }
     public string Arguments { get; }
     public DateTimeOffset ReceivedAt { get; }
+    public string MessageId { get; }
+    public bool IsModerator { get; }
+    public bool IsBroadcaster { get; }
 }

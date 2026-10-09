@@ -120,6 +120,16 @@ assert.equal(viewerCountText("en", 100), "100 viewers");
 
 const css = fs.readFileSync(path.join(__dirname, "../src/mods/twitch-citizens.module.scss"), "utf8");
 const jsx = fs.readFileSync(path.join(__dirname, "../src/mods/twitch-citizens.tsx"), "utf8");
+const bindings = fs.readFileSync(path.join(__dirname, "../../CS2TwitchCitizens.Mod/ViewerPanelUISystem.cs"), "utf8");
+assert.match(jsx, /bindTriggerWithArgs<\[string\]>\(group, "reauthorizeTwitch"\)/);
+assert.match(jsx, /auth\.writePermission === "AuthorizationRequired" && auth\.state === "Connected"/);
+assert.match(jsx, /auth\.reauthorizationState === "Pending"/);
+assert.match(bindings, /TriggerBinding<string>\(Group, "reauthorizeTwitch"/);
+for (const locale of ["ru", "en"]) {
+  for (const key of ["sendPermission", "permissionAllowed", "permissionRequired", "permissionChecking", "updateTwitchPermissions"]) {
+    assert.ok(text(locale, key), `${locale}: ${key}`);
+  }
+}
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 for (const file of ["ui-text.ts", "twitch-citizens.tsx"]) {
   const content = utf8.decode(fs.readFileSync(path.join(__dirname, `../src/mods/${file}`)));
@@ -176,7 +186,7 @@ for (const trigger of ["connectTwitch", "cancelTwitch", "reconnectTwitch", "disc
 for (const key of ["connectTwitch", "waitingAuth", "codeExpired", "authDenied", "reauthorize", "storageError"]) {
   assert.ok(text("ru", key) && text("en", key));
 }
-assert.doesNotMatch(jsx, /accessToken|refreshToken|deviceCode|Authorization/);
+assert.doesNotMatch(jsx, /accessToken|refreshToken|deviceCode|Bearer\s/);
 const deployed = path.join(process.env.CSII_USERDATAPATH || "", "Mods", "CS2TwitchCitizens.UI");
 if (process.env.CSII_USERDATAPATH) {
   const js = utf8.decode(fs.readFileSync(path.join(deployed, "CS2TwitchCitizens.UI.mjs")));

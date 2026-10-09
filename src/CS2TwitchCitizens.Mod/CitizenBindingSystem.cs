@@ -34,6 +34,7 @@ namespace CS2TwitchCitizens.Mod
             new Dictionary<string, CitizenDisplayIdentity>(StringComparer.Ordinal);
         private readonly Dictionary<string, int> _missingObservations =
             new Dictionary<string, int>(StringComparer.Ordinal);
+        private readonly CommandGate _commandGate = new CommandGate();
         private CitizenCameraService? _camera;
         private CitizenEligibilityService? _eligibility;
         private bool _diagnoseRestoredBindings;
@@ -66,6 +67,8 @@ namespace CS2TwitchCitizens.Mod
             _missingObservations.Clear();
             _diagnoseRestoredBindings = false;
             Mod.CommandQueue?.Clear();
+            _commandGate.Clear();
+            Mod.Connection?.ClearReplies();
             Mod.Log.Info($"[CS2TwitchCitizens] LIFE preload purpose={purpose} mode={mode}; city state cleared");
         }
 
@@ -88,6 +91,8 @@ namespace CS2TwitchCitizens.Mod
                 _missingObservations.Clear();
                 _diagnoseRestoredBindings = false;
                 Mod.CommandQueue?.Clear();
+                _commandGate.Clear();
+                Mod.Connection?.ClearReplies();
                 return;
             }
             if (!_loadReady && !_loadFailed)
@@ -115,6 +120,8 @@ namespace CS2TwitchCitizens.Mod
                 _diagnoseRestoredBindings = _bindings.GetAllBindings().Count > 0;
                 // Commands received while the city was loading have no reliable city context.
                 Mod.CommandQueue?.Clear();
+                _commandGate.Clear();
+                Mod.Connection?.ClearReplies();
                 _loadReady = true;
                 _nextLifeCheck = DateTime.UtcNow.AddSeconds(10);
                 Mod.Log.Info($"[CS2TwitchCitizens] LIFE restore complete viewers={_lives.Accounts.Count}");
@@ -265,6 +272,8 @@ namespace CS2TwitchCitizens.Mod
 
         private void HandleCommand(TwitchCommand command)
         {
+            var settings = Mod.CommandSettings?.Current ?? CommandSettings.Defaults();
+            if (!_commandGate.TryAdmit(command, settings)) return;
             _lives.UpdateIdentity(command.TwitchUserId, command.Login, command.DisplayName);
             if (_identities.TryGetValue(command.TwitchUserId, out var identity))
             {
@@ -274,16 +283,28 @@ namespace CS2TwitchCitizens.Mod
             switch (command.Command)
             {
                 case "!join":
+                    var alreadyJoined = _bindings.TryGet(command.TwitchUserId, out _);
                     Join(command);
+                    if (!alreadyJoined && _bindings.TryGet(command.TwitchUserId, out _))
+                        Mod.Connection?.QueueReply(command, CommandResponseFormatter.Limit(
+                            settings.Language == "ru" ? "@" + command.DisplayName + ", вы стали жителем города!" :
+                            "@" + command.DisplayName + ", you joined the city!", settings.Join.MaxResponseLength));
+                    else if (alreadyJoined && settings.Join.AlreadyJoinedResponse)
+                        Mod.Connection?.QueueReply(command, CommandResponseFormatter.Limit(
+                            settings.Language == "ru" ? "@" + command.DisplayName + ", вы уже житель города." :
+                            "@" + command.DisplayName + ", you already joined the city.", settings.Join.MaxResponseLength));
                     break;
                 case "!me":
                     Me(command);
+                    Mod.Connection?.QueueReply(command, CommandResponseFormatter.Format("!me", GetViewerInfo(command.TwitchUserId), settings));
                     break;
                 case "!find":
                     Find(command);
+                    Mod.Connection?.QueueReply(command, CommandResponseFormatter.Format("!find", GetViewerInfo(command.TwitchUserId), settings));
                     break;
                 case "!history":
                     History(command);
+                    Mod.Connection?.QueueReply(command, CommandResponseFormatter.Format("!history", GetViewerInfo(command.TwitchUserId), settings));
                     break;
             }
         }
@@ -636,16 +657,40 @@ namespace CS2TwitchCitizens.Mod
             info.Age = EntityManager.GetComponentData<Citizen>(entity).GetAge().ToString();
             if (info.CurrentLife != null)
                 info.CurrentLife.LastKnownAge = info.Age;
+            var homeEntity = Entity.Null;
+            var workEntity = Entity.Null;
+            var currentEntity = Entity.Null;
             if (EntityManager.HasComponent<HouseholdMember>(entity))
             {
                 var household = EntityManager.GetComponentData<HouseholdMember>(entity).m_Household;
+                if (EntityManager.Exists(household) && EntityManager.HasBuffer<HouseholdCitizen>(household))
+                    info.HouseholdSize = EntityManager.GetBuffer<HouseholdCitizen>(household).Length.ToString(CultureInfo.InvariantCulture);
                 if (EntityManager.Exists(household) && EntityManager.HasComponent<PropertyRenter>(household))
-                    info.Home = EntityManager.GetComponentData<PropertyRenter>(household).m_Property.ToString();
+                {
+                    homeEntity = EntityManager.GetComponentData<PropertyRenter>(household).m_Property;
+                    if (EntityManager.Exists(homeEntity)) info.Home = GetPlaceLabel(homeEntity, string.Empty);
+                }
             }
             if (EntityManager.HasComponent<Worker>(entity))
-                info.Workplace = EntityManager.GetComponentData<Worker>(entity).m_Workplace.ToString();
+            {
+                info.Employment = "yes";
+                workEntity = EntityManager.GetComponentData<Worker>(entity).m_Workplace;
+                if (EntityManager.Exists(workEntity)) info.Workplace = GetPlaceLabel(workEntity, string.Empty);
+            }
+            else info.Employment = "no";
+            if (EntityManager.HasComponent<Game.Citizens.Student>(entity))
+            {
+                var school = EntityManager.GetComponentData<Game.Citizens.Student>(entity).m_School;
+                if (EntityManager.Exists(school)) info.School = GetPlaceLabel(school, string.Empty);
+            }
             if (EntityManager.HasComponent<CurrentBuilding>(entity))
-                info.CurrentBuilding = EntityManager.GetComponentData<CurrentBuilding>(entity).m_CurrentBuilding.ToString();
+            {
+                currentEntity = EntityManager.GetComponentData<CurrentBuilding>(entity).m_CurrentBuilding;
+                if (EntityManager.Exists(currentEntity)) info.CurrentBuilding = GetPlaceLabel(currentEntity, string.Empty);
+            }
+
+            if (currentEntity != Entity.Null && EntityManager.Exists(currentEntity))
+                info.LocationType = currentEntity == homeEntity ? "home" : currentEntity == workEntity ? "work" : "building";
 
             info.Position = LocateCitizen(entity);
             info.PositionAvailable = info.Position.HasValue;

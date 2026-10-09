@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>CS2TwitchCitizens.Mod</AssemblyName>
-    <Version>0.7.0</Version>
+    <Version>0.8.3</Version>
     <TwitchClientId Condition="'$(TwitchClientId)' == ''">$([System.Environment]::GetEnvironmentVariable('CS2TWITCHCITIZENS_CLIENT_ID'))</TwitchClientId>
     <ManagedPath Condition="'$(ManagedPath)' == '' and '$(CS2ManagedDir)' != ''">$(CS2ManagedDir)</ManagedPath>
     <CS2ToolPath Condition="'$(CS2ToolPath)' == ''">$([System.Environment]::GetEnvironmentVariable('CSII_TOOLPATH', 'EnvironmentVariableTarget.User'))</CS2ToolPath>

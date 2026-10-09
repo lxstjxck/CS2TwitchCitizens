@@ -8,5 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
     <ProjectReference Include="../../src/CS2TwitchCitizens.Twitch/CS2TwitchCitizens.Twitch.csproj" />
+    <Content Include="../fixtures/command-settings-v1.json" Link="fixtures/command-settings-v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -3,6 +3,53 @@ using CS2TwitchCitizens.Twitch;
 using System.Text.Json;
 
 await OAuthChecks.Run();
+await ChatSenderChecks.Run();
+ReplyQueueChecks.Run();
+
+var defaults = CommandSettings.Defaults();
+Check(defaults.Join.ViewerCooldownSeconds == 30 && defaults.Me.ViewerCooldownSeconds == 15);
+Check(CommandSettings.FromJson(defaults.ToJson()).History.ViewerCooldownSeconds == 30);
+var fixture = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "command-settings-v1.json"));
+Check(CommandSettings.FromJson(fixture).Me.SelectedFields.SequenceEqual(defaults.Me.SelectedFields));
+Check(CommandSettings.FromJson("{\"version\":1}").Join.ViewerCooldownSeconds == 30);
+var settingsPath = Path.Combine(Path.GetTempPath(), "cs2-command-settings-" + Guid.NewGuid().ToString("N"), "commands.json");
+var settingsStore = new CommandSettingsStore(settingsPath);
+Check(settingsStore.Load().Me.Enabled);
+Check(!settingsStore.LoadFailed);
+settingsStore.Save(defaults);
+Check(settingsStore.Load().Join.ViewerCooldownSeconds == 30);
+File.WriteAllText(settingsPath, "{broken");
+Check(settingsStore.Load().Join.ViewerCooldownSeconds == 30);
+Check(settingsStore.LoadFailed);
+settingsStore.Save(defaults);
+Check(!settingsStore.LoadFailed && settingsStore.Load().Join.ViewerCooldownSeconds == 30);
+Directory.Delete(Path.GetDirectoryName(settingsPath)!, true);
+var gate = new CommandGate();
+var gateTime = DateTimeOffset.UtcNow;
+var gateJoin = new TwitchCommand("viewer-a", "", "Viewer", "!join", "", gateTime);
+Check(gate.TryAdmit(gateJoin, defaults));
+Check(!gate.TryAdmit(gateJoin, defaults));
+Check(gate.TryAdmit(new TwitchCommand("viewer-b", "", "Viewer", "!join", "", gateTime), defaults));
+Check(gate.TryAdmit(new TwitchCommand("viewer-a", "", "Viewer", "!me", "", gateTime), defaults));
+defaults.SharedCooldownSeconds = 10;
+Check(!gate.TryAdmit(new TwitchCommand("viewer-a", "", "Viewer", "!find", "", gateTime), defaults));
+defaults.Find.Enabled = false;
+Check(!gate.TryAdmit(new TwitchCommand("viewer-c", "", "Viewer", "!find", "", gateTime), defaults));
+defaults.Find.Enabled = true;
+Check(gate.TryAdmit(new TwitchCommand("viewer-c", "", "Viewer", "!find", "", gateTime), defaults));
+defaults.Find.Permission = "moderators";
+Check(!gate.TryAdmit(new TwitchCommand("viewer-d", "", "Viewer", "!find", "", gateTime), defaults));
+Check(gate.TryAdmit(new TwitchCommand("viewer-d", "", "Viewer", "!find", "", gateTime, isModerator: true), defaults));
+defaults.Me.SelectedFields = new[] { "status" };
+var sampleInfo = new ViewerCitizenInfo { DisplayName = "Viewer", TotalLives = 1,
+    CurrentLifeStatus = "Active", CitizenName = "Alex", Age = "Adult", IsValid = true };
+Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("статус: жив"));
+Check(!CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("Алекс"));
+defaults.Language = "en";
+Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Contains("status: alive"));
+defaults.Me.MaxResponseLength = 12;
+Check(CommandResponseFormatter.Format("!me", sampleInfo, defaults).Length <= 12);
+Console.WriteLine("PASS: command settings, cooldowns, permissions, fields, formatting");
 
 var now = DateTimeOffset.Parse("2026-10-04T00:00:00+03:00");
 foreach (var verb in new[] { "!join", "!me", "!find", "!history" })
@@ -76,6 +123,11 @@ Check(!EventSubProtocol.TryGetCommand(joinEnvelope!, "wrong-channel", now, out _
 Check(EventSubProtocol.TryGetCommand(joinEnvelope!, "42", now, out var twitchJoin));
 Check(twitchJoin!.TwitchUserId == "9001" && twitchJoin.Login == "viewer_login" &&
       twitchJoin.DisplayName == "Viewer_Name" && twitchJoin.Command == "!join");
+var moderatorJson = ChatEnvelope("event-1", "!join").Replace("\"message\":{\"text\"",
+    "\"message_id\":\"chat-1\",\"badges\":[{\"set_id\":\"moderator\"}],\"message\":{\"text\"");
+Check(EventSubProtocol.TryRead(moderatorJson, out var moderatorEnvelope));
+Check(EventSubProtocol.TryGetCommand(moderatorEnvelope!, "42", now, out var moderatorCommand));
+Check(moderatorCommand!.MessageId == "chat-1" && moderatorCommand.IsModerator && !moderatorCommand.IsBroadcaster);
 Check(EventSubProtocol.TryRead(ChatEnvelope("me-1", "!me"), out var meEnvelope));
 Check(EventSubProtocol.TryGetCommand(meEnvelope!, "42", now, out var twitchMe));
 Check(twitchMe!.TwitchUserId == "9001" && twitchMe.Command == "!me");

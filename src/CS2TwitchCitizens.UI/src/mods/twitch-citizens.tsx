@@ -5,6 +5,9 @@ import styles from "./twitch-citizens.module.scss";
 import { filterViewers } from "./viewer-search";
 import { canLocate, isCameraError, lifeHistory, LifeSummary, selectedViewer } from "./viewer-view-model";
 import { ageText, connectionText, dateText, detectLocale, focusText, lifeCountText, lifeText, Locale, text, valueText, viewerCountText, viewerMetaText } from "./ui-text";
+import { defaultCommands, parseCommandConfig } from "./command-config";
+import { CommandEditor } from "./command-editor";
+export { CommandEditor } from "./command-editor";
 
 type Viewer = {
   twitchUserId: string;
@@ -25,15 +28,19 @@ type Viewer = {
 type Snapshot = { twitchStatus: string; channelId: string; gameLoaded: boolean; viewers: Viewer[] };
 type FocusFeedback = { viewerId: string; result: string; sequence: number };
 type Auth = { state: string; login: string; displayName: string; userCode: string; verificationUri: string;
-  expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean };
-
+  expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean;
+  writePermission: "Allowed" | "AuthorizationRequired" | "Checking"; reauthorizationState: string };
 const group = "cs2twitchcitizens";
 const snapshotBinding = bindValue<string>(group, "snapshot", "{}");
 const focusResultBinding = bindValue<string>(group, "focusResult", "");
 const authBinding = bindValue<string>(group, "auth", "{}");
+const commandsBinding = bindValue<string>(group, "commandSettings", "{}");
+const commandsStatusBinding = bindValue<string>(group, "commandSettingsStatus", "");
+const updateCommands = bindTriggerWithArgs<[string]>(group, "updateCommandSettings");
 const connectTwitch = bindTriggerWithArgs<[string]>(group, "connectTwitch");
 const cancelTwitch = bindTriggerWithArgs<[string]>(group, "cancelTwitch");
 const reconnectTwitch = bindTriggerWithArgs<[string]>(group, "reconnectTwitch");
+const reauthorizeTwitch = bindTriggerWithArgs<[string]>(group, "reauthorizeTwitch");
 const disconnectTwitch = bindTriggerWithArgs<[string]>(group, "disconnectTwitch");
 const openTwitchVerification = bindTriggerWithArgs<[string]>(group, "openTwitchVerification");
 const focusCitizen = bindTriggerWithArgs<[string]>(group, "focusCitizen");
@@ -66,9 +73,13 @@ function parseAuth(value: string): Auth {
     return { state: data.state || "Disconnected", login: data.login || "", displayName: data.displayName || "",
       userCode: data.userCode || "", verificationUri: data.verificationUri || "",
       expiresAt: data.expiresAt || 0, error: data.error || "",
-      eventSubStatus: data.eventSubStatus || "Disabled", legacyConfig: !!data.legacyConfig };
+      eventSubStatus: data.eventSubStatus || "Disabled", legacyConfig: !!data.legacyConfig,
+      writePermission: data.writePermission === "Allowed" || data.writePermission === "Checking"
+        ? data.writePermission : "AuthorizationRequired",
+      reauthorizationState: data.reauthorizationState || "Idle" };
   } catch { return { state: "Disconnected", login: "", displayName: "", userCode: "", verificationUri: "",
-    expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false }; }
+    expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false,
+    writePermission: "AuthorizationRequired", reauthorizationState: "Idle" }; }
 }
 
 function displayName(viewer: Viewer, locale: Locale): string {
@@ -92,7 +103,7 @@ export const TwitchCitizensButton = () => {
 export const TwitchCitizensPanel = () => {
   const open = useValue(panelOpen);
   const locale = useValue(localeBinding);
-  const [tab, setTab] = useState<"residents" | "settings">("residents");
+  const [tab, setTab] = useState<"residents" | "settings" | "commands">("residents");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [viewMode, setViewMode] = useState<"info" | "history">("info");
@@ -101,6 +112,9 @@ export const TwitchCitizensPanel = () => {
   const feedbackJson = useValue(focusResultBinding);
   const authJson = useValue(authBinding);
   const auth = useMemo(() => parseAuth(authJson), [authJson]);
+  const commandsJson = useValue(commandsBinding);
+  const commandsStatus = useValue(commandsStatusBinding);
+  const commandState = useMemo(() => parseCommandConfig(commandsJson), [commandsJson]);
   const feedback = useMemo(() => parseFeedback(feedbackJson), [feedbackJson]);
   const viewers = useMemo(() => filterViewers(snapshot.viewers, search), [snapshot.viewers, search]);
   const selected = selectedViewer(viewers, selectedId);
@@ -137,11 +151,26 @@ export const TwitchCitizensPanel = () => {
             className={`${styles.control} ${styles.tab}`} onSelect={() => setTab("residents")}>{text(locale, "residents")}</Button>
           <Button variant="default" selected={tab === "settings"} data-selected={tab === "settings"}
             className={`${styles.control} ${styles.tab}`} onSelect={() => setTab("settings")}>{text(locale, "settings")}</Button>
+          <Button variant="default" selected={tab === "commands"} data-selected={tab === "commands"}
+            className={`${styles.control} ${styles.tab}`} onSelect={() => setTab("commands")}>{locale === "ru" ? "Команды" : "Commands"}</Button>
         </div>
 
-        {tab === "settings" ? <div className={styles.settings}>
+        {tab === "commands" ? <CommandTabBoundary locale={locale}>
+          <CommandEditor config={commandState.config} recovered={commandState.recovered || commandsStatus === "Recovered"}
+            saveFailed={commandsStatus === "SaveFailed"} locale={locale}
+            onSave={next => updateCommands(JSON.stringify(next))} />
+        </CommandTabBoundary> : tab === "settings" ? <div className={styles.settings}>
           <div className={styles.settingsRow}><span>{text(locale, "connection")}</span><strong>{connectionText(locale, snapshot.twitchStatus)}</strong></div>
           <div className={styles.settingsRow}><span>{text(locale, "channel")}</span><strong className={styles.longValue}>{snapshot.channelId || text(locale, "channelMissing")}</strong></div>
+          <div className={styles.settingsRow}><span>{text(locale, "sendPermission")}</span><strong>{text(locale,
+            auth.writePermission === "Allowed" ? "permissionAllowed" : auth.writePermission === "Checking"
+              ? "permissionChecking" : "permissionRequired")}</strong></div>
+          {auth.writePermission === "AuthorizationRequired" && auth.state === "Connected" &&
+            auth.reauthorizationState === "Idle" && <Button variant="default" className={`${styles.control} ${styles.authButton}`}
+              onSelect={() => reauthorizeTwitch("")}>{text(locale, "updateTwitchPermissions")}</Button>}
+          {auth.state === "Connected" && auth.error && <p className={styles.authError}>{text(locale,
+            auth.error === "ClientIdMissing" ? "clientIdMissing" : auth.error === "StorageError" ? "storageError" :
+            auth.error === "CodeExpired" ? "codeExpired" : auth.error === "Denied" ? "authDenied" : "networkError")}</p>}
           {auth.legacyConfig && <p className={styles.helper}>{text(locale, "legacyNotice")}</p>}
           {(auth.state === "Disconnected" || auth.state === "Error") && <>
             {auth.state === "Error" && <p className={styles.authError}>{text(locale, auth.error === "ClientIdMissing" ? "clientIdMissing" :
@@ -150,9 +179,10 @@ export const TwitchCitizensPanel = () => {
             <Button variant="default" className={`${styles.control} ${styles.authButton}`}
               onSelect={() => connectTwitch("")}>{text(locale, "connectTwitch")}</Button>
           </>}
-          {(auth.state === "Requesting" || auth.state === "Pending" || auth.state === "Restoring") && <>
-            <p className={styles.helper}>{text(locale, auth.state === "Pending" ? "waitingAuth" : "requestingAuth")}</p>
-            {auth.state === "Pending" && <>
+          {(auth.state === "Requesting" || auth.state === "Pending" || auth.state === "Restoring" ||
+            auth.reauthorizationState === "Requesting" || auth.reauthorizationState === "Pending") && <>
+            <p className={styles.helper}>{text(locale, auth.state === "Pending" || auth.reauthorizationState === "Pending" ? "waitingAuth" : "requestingAuth")}</p>
+            {(auth.state === "Pending" || auth.reauthorizationState === "Pending") && <>
               <strong className={styles.userCode}>{auth.userCode}</strong>
               <span className={styles.longValue}>{auth.verificationUri}</span>
               <span>{text(locale, "codeExpires")}: {Math.max(0, Math.ceil(auth.expiresAt - Date.now() / 1000))} s</span>
@@ -286,3 +316,33 @@ export const TwitchCitizensPanel = () => {
     </Scrollable>
   </Panel>;
 };
+
+export class CommandTabBoundary extends React.Component<{ children: React.ReactNode; locale: Locale },
+  { failed: boolean; recoveryOpen: boolean; confirmReset: boolean }> {
+  state = { failed: false, recoveryOpen: false, confirmReset: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error) { console.error("[CS2TwitchCitizens] Commands tab render failed", error); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <div className={styles.settings}>
+      <p className={styles.authError}>{this.props.locale === "ru"
+        ? "Не удалось открыть настройки команд. Сбросьте их или вернитесь на другую вкладку."
+        : "Could not open command settings. Reset them or switch to another tab."}</p>
+      <Button variant="default" className={`${styles.control} ${styles.expandButton}`}
+        onSelect={() => this.setState({ recoveryOpen: !this.state.recoveryOpen, confirmReset: false })}>
+        {this.props.locale === "ru" ? "Дополнительные настройки восстановления" : "Advanced recovery settings"}</Button>
+      {this.state.recoveryOpen && <div className={styles.advancedContent}>
+        {this.state.confirmReset ? <>
+          <span>{this.props.locale === "ru" ? "Сбросить настройки команд?" : "Reset command settings?"}</span>
+          <Button variant="default" className={styles.control} onSelect={() => {
+            updateCommands(JSON.stringify(defaultCommands())); this.setState({ failed: false, recoveryOpen: false, confirmReset: false });
+          }}>{this.props.locale === "ru" ? "Да, сбросить" : "Yes, reset"}</Button>
+          <Button variant="default" className={styles.control} onSelect={() => this.setState({ confirmReset: false })}>
+            {this.props.locale === "ru" ? "Отмена" : "Cancel"}</Button>
+        </> : <Button variant="default" className={styles.control}
+          onSelect={() => this.setState({ confirmReset: true })}>
+          {this.props.locale === "ru" ? "Сбросить настройки команд" : "Reset command settings"}</Button>}
+      </div>}
+    </div>;
+  }
+}
