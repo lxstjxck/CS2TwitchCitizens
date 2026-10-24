@@ -18,24 +18,30 @@ public sealed class TwitchEventSubService : IDisposable
     private static readonly Uri SubscriptionsEndpoint = new Uri("https://api.twitch.tv/helix/eventsub/subscriptions");
     private readonly TwitchConfig _config;
     private readonly TwitchCommandQueue _queue;
+    private readonly RedemptionQueue? _redemptions;
     private readonly Action<string> _log;
     private readonly HttpClient _http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
     private readonly CancellationTokenSource _stop = new CancellationTokenSource();
     private readonly EventSubMessageIds _messageIds = new EventSubMessageIds();
+    private Dictionary<string, string> _rewardIcons = new Dictionary<string, string>(StringComparer.Ordinal);
     private readonly object _socketGate = new object();
     private ClientWebSocket? _socket;
     private Task? _worker;
     private bool _disposed;
     private DateTimeOffset _validatedAt;
     private volatile TwitchConnectionStatus _status = TwitchConnectionStatus.Disconnected;
+    private volatile string _redemptionStatus = "Disconnected";
+    private bool _hasRedemptionScope;
 
     public TwitchConnectionStatus Status => _status;
+    public string RedemptionStatus => _redemptionStatus;
 
-    public TwitchEventSubService(TwitchConfig config, TwitchCommandQueue queue, Action<string> log)
+    public TwitchEventSubService(TwitchConfig config, TwitchCommandQueue queue, Action<string> log, RedemptionQueue? redemptions = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _log = log ?? throw new ArgumentNullException(nameof(log));
+        _redemptions = redemptions;
         if (!config.Enabled || !config.IsComplete)
             throw new ArgumentException("Enabled Twitch config must be complete.", nameof(config));
     }
@@ -68,6 +74,7 @@ public sealed class TwitchEventSubService : IDisposable
             catch (AuthenticationException)
             {
                 _status = TwitchConnectionStatus.AuthenticationError;
+                _redemptionStatus = "AuthenticationError";
                 return;
             }
             catch (Exception ex)
@@ -80,6 +87,7 @@ public sealed class TwitchEventSubService : IDisposable
                 return;
             failures++;
             _status = TwitchConnectionStatus.Reconnecting;
+            if (_hasRedemptionScope) _redemptionStatus = "Reconnecting";
             var delay = EventSubRetryPolicy.Delay(failures);
             _log($"[CS2TwitchCitizens] Twitch reconnect in {delay.TotalSeconds:0}s");
             try { await Task.Delay(delay, cancellationToken).ConfigureAwait(false); }
@@ -112,6 +120,8 @@ public sealed class TwitchEventSubService : IDisposable
                         _log("[CS2TwitchCitizens] Twitch token client ID, user ID, or user:read:chat scope mismatch");
                         throw new AuthenticationException("Twitch token does not match config.");
                     }
+                    _hasRedemptionScope = data.Scopes.Contains("channel:read:redemptions");
+                    if (!_hasRedemptionScope) _redemptionStatus = "AuthorizationRequired";
                 }
             }
         }
@@ -128,6 +138,22 @@ public sealed class TwitchEventSubService : IDisposable
                 throw new InvalidDataException("Twitch EventSub Welcome missing.");
             _log("[CS2TwitchCitizens] Twitch EventSub session established");
             await SubscribeAsync(welcome.Payload!.Session!.Id!, cancellationToken).ConfigureAwait(false);
+            if (_hasRedemptionScope) _redemptionStatus = "Connecting";
+            if (_redemptions != null && _redemptionStatus == "Connecting")
+            {
+                try { await SubscribeRedemptionsAsync(welcome.Payload.Session.Id!, cancellationToken).ConfigureAwait(false);
+                    await SubscribeRedemptionUpdatesAsync(welcome.Payload.Session.Id!, cancellationToken).ConfigureAwait(false);
+                    _redemptionStatus = "Connected"; }
+                catch (UnauthorizedAccessException ex) { _redemptionStatus = "SubscriptionError";
+                    _log("[CS2TwitchCitizens] Channel Points subscription failed: " + ex.GetType().Name); }
+            }
+            if (_redemptions != null && _redemptionStatus == "Connected")
+            {
+                try { _rewardIcons = await TwitchRewardCatalog.LoadAsync(_http, _config.ClientId,
+                    _config.AccessToken, _config.BroadcasterUserId, cancellationToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception ex) { _log("[CS2TwitchCitizens] Reward icon lookup failed: " + ex.GetType().Name); }
+            }
             _status = TwitchConnectionStatus.Connected;
             var keepalive = KeepaliveTimeout(welcome);
 
@@ -168,6 +194,9 @@ public sealed class TwitchEventSubService : IDisposable
 
                 if (envelope.Metadata?.MessageType == "revocation")
                 {
+                    if (envelope.Payload?.Subscription?.Type == EventSubProtocol.RedemptionType ||
+                        envelope.Payload?.Subscription?.Type == EventSubProtocol.RedemptionUpdateType)
+                    { _redemptionStatus = "Revoked"; continue; }
                     _log("[CS2TwitchCitizens] Twitch chat subscription revoked");
                     throw new AuthenticationException("Twitch subscription revoked.");
                 }
@@ -175,8 +204,15 @@ public sealed class TwitchEventSubService : IDisposable
                 if (envelope.Metadata?.MessageType != "notification")
                     continue;
 
-                if (!cancellationToken.IsCancellationRequested && EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command) &&
-                    _messageIds.TryAdd(envelope.Metadata.MessageId))
+                if (cancellationToken.IsCancellationRequested || !_messageIds.TryAdd(envelope.Metadata.MessageId)) continue;
+                if (_redemptions != null && EventSubProtocol.TryGetRedemption(envelope, _config.BroadcasterUserId,
+                    DateTimeOffset.UtcNow, out var redemption))
+                {
+                    if (_rewardIcons.TryGetValue(redemption!.RewardId, out var icon)) redemption.RewardIconUrl = icon;
+                    if (!_redemptions.TryEnqueue(redemption!))
+                        _log("[CS2TwitchCitizens] Channel Points queue full; redemption skipped");
+                }
+                else if (EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command))
                 {
                     _queue.Enqueue(command!);
                     _log($"[CS2TwitchCitizens] TWITCH COMMAND viewer={command!.TwitchUserId} login={command.Login} command={command.Command}");
@@ -220,34 +256,59 @@ public sealed class TwitchEventSubService : IDisposable
 
     private async Task SubscribeAsync(string sessionId, CancellationToken cancellationToken)
     {
-        var subscription = new SubscriptionRequest
-        {
-            Type = "channel.chat.message", Version = "1",
-            Condition = new SubscriptionCondition { BroadcasterUserId = _config.BroadcasterUserId, UserId = _config.UserId },
-            Transport = new SubscriptionTransport { Method = "websocket", SessionId = sessionId }
-        };
+        await PostSubscriptionAsync("channel.chat.message", _config.UserId, sessionId, cancellationToken).ConfigureAwait(false);
+        _log($"[CS2TwitchCitizens] Twitch chat subscription active broadcaster={_config.BroadcasterUserId}");
+    }
+
+    private async Task SubscribeRedemptionsAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        await PostSubscriptionAsync(EventSubProtocol.RedemptionType, null, sessionId, cancellationToken).ConfigureAwait(false);
+        _log("[CS2TwitchCitizens] Channel Points subscription active");
+    }
+
+    private async Task SubscribeRedemptionUpdatesAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        await PostSubscriptionAsync(EventSubProtocol.RedemptionUpdateType, null, sessionId, cancellationToken).ConfigureAwait(false);
+    }
+
+    public static string BuildSubscriptionJson(string type, string broadcasterId, string? userId, string sessionId)
+    {
+        if (type != "channel.chat.message" && type != EventSubProtocol.RedemptionType &&
+            type != EventSubProtocol.RedemptionUpdateType) throw new ArgumentOutOfRangeException(nameof(type));
+        if (string.IsNullOrWhiteSpace(broadcasterId) || string.IsNullOrWhiteSpace(sessionId) ||
+            (type == "channel.chat.message" ? string.IsNullOrWhiteSpace(userId) : userId != null))
+            throw new ArgumentException("Invalid EventSub subscription condition.");
+        var subscription = new SubscriptionRequest { Type = type, Version = "1",
+            Condition = new SubscriptionCondition { BroadcasterUserId = broadcasterId, UserId = userId },
+            Transport = new SubscriptionTransport { Method = "websocket", SessionId = sessionId } };
         using (var stream = new MemoryStream())
         {
             new DataContractJsonSerializer(typeof(SubscriptionRequest)).WriteObject(stream, subscription);
-            using (var request = new HttpRequestMessage(HttpMethod.Post, SubscriptionsEndpoint))
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+    }
+
+    private async Task PostSubscriptionAsync(string type, string? userId, string sessionId, CancellationToken cancellationToken)
+    {
+        var body = BuildSubscriptionJson(type, _config.BroadcasterUserId, userId, sessionId);
+        using (var request = new HttpRequestMessage(HttpMethod.Post, SubscriptionsEndpoint))
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.AccessToken);
+            request.Headers.Add("Client-Id", _config.ClientId);
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false))
             {
-                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.AccessToken);
-                request.Headers.Add("Client-Id", _config.ClientId);
-                request.Content = new ByteArrayContent(stream.ToArray());
-                request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-                using (var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false))
+                if (response.StatusCode == HttpStatusCode.Unauthorized)
+                    throw new AuthenticationException("EventSub subscription unauthorized.");
+                if (response.StatusCode == HttpStatusCode.Forbidden || response.StatusCode == HttpStatusCode.BadRequest)
+                    throw new UnauthorizedAccessException("EventSub subscription rejected.");
+                if (response.StatusCode != HttpStatusCode.Accepted)
                 {
-                    if (response.StatusCode == HttpStatusCode.Unauthorized)
-                        throw new AuthenticationException("EventSub subscription unauthorized.");
-                    if (response.StatusCode != HttpStatusCode.Accepted)
-                    {
-                        _log($"[CS2TwitchCitizens] Twitch chat subscription failed HTTP {(int)response.StatusCode}");
-                        throw new HttpRequestException("EventSub subscription failed.");
-                    }
+                    _log($"[CS2TwitchCitizens] Twitch subscription failed HTTP {(int)response.StatusCode} type={type}");
+                    throw new HttpRequestException("EventSub subscription failed.");
                 }
             }
         }
-        _log($"[CS2TwitchCitizens] Twitch chat subscription active broadcaster={_config.BroadcasterUserId}");
     }
 
     private static TimeSpan KeepaliveTimeout(EventSubEnvelope welcome) =>
@@ -280,6 +341,7 @@ public sealed class TwitchEventSubService : IDisposable
         if (_disposed) return;
         _disposed = true;
         _status = TwitchConnectionStatus.Disconnected;
+        _redemptionStatus = "Disconnected";
         _stop.Cancel();
         lock (_socketGate)
         {
@@ -314,7 +376,7 @@ public sealed class TwitchEventSubService : IDisposable
     private sealed class SubscriptionCondition
     {
         [DataMember(Name = "broadcaster_user_id")] public string? BroadcasterUserId { get; set; }
-        [DataMember(Name = "user_id")] public string? UserId { get; set; }
+        [DataMember(Name = "user_id", EmitDefaultValue = false)] public string? UserId { get; set; }
     }
 
     [DataContract]

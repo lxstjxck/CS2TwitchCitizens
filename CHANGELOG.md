@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — Channel Points and city events foundation (game verification pending)
+
+- Extended the existing broadcaster EventSub WebSocket with custom reward redemption add and update subscriptions. Device authorization requests `channel:read:redemptions` alongside the existing chat scopes; saved credentials still use DPAPI. Missing Channel Points permission is shown separately and can be renewed in the panel.
+- Added a bounded redemption queue, reward ID action registry, independent interactive settings, and a persistent per-broadcaster redemption ledger. Unknown rewards, canceled redemptions, disabled actions, and unsupported disasters do not execute. A corrupt ledger blocks execution to avoid duplicate effects.
+- Added game-thread presentation events for viewer messages, city announcements, celebrations, and emergency alerts. Bound viewers can show their citizen name and an optional Find citizen action. Messages are length limited, rendered as text, displayed sequentially, and can be dismissed. A read-only Helix lookup supplies reward icons when available. Local tests use no Twitch reward.
+- Added the Interactive panel with reward mapping, enablement, limits, queue status, recent events, and local tests. The events are UI only and do not change the simulation. The mod does not update Twitch redemption fulfillment status.
+- C# checks, UI checks, and TypeScript typecheck pass. Official C# compilation passes, but local ModPostProcessor reports an incomplete game toolchain; deployment and in-game redemption delivery remain unverified.
+
 ## 0.8.6 — conditional character age in years (game verification pending)
 
 - Inspected the installed `Game.dll` (SHA-256 `AAEE15C4FA41C130ABAA1183840667E4FAAE531D67E8A9FA7536618EFFA2F86A`). `AgingSystem` returns 21, 36, and 84 game days for Teen, Adult, and Elderly thresholds. `Citizen.GetAgeInDays` subtracts `m_BirthDay` from the simulation day; the game's citizen UI reads only the `CitizenAge` category.

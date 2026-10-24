@@ -18,6 +18,8 @@ public sealed class TwitchAuthView
     [DataMember(Name = "error")] public string Error { get; set; } = "";
     [DataMember(Name = "eventSubStatus")] public string EventSubStatus { get; set; } = "Disabled";
     [DataMember(Name = "writePermission")] public string WritePermission { get; set; } = "AuthorizationRequired";
+    [DataMember(Name = "channelPointsPermission")] public string ChannelPointsPermission { get; set; } = "AuthorizationRequired";
+    [DataMember(Name = "channelPointsStatus")] public string ChannelPointsStatus { get; set; } = "Disconnected";
     [DataMember(Name = "reauthorizationState")] public string ReauthorizationState { get; set; } = "Idle";
     [DataMember(Name = "legacyConfig")] public bool LegacyConfig { get; set; }
     [DataMember(Name = "modernCredentials")] public bool ModernCredentials { get; set; }
@@ -37,6 +39,7 @@ public sealed class TwitchConnectionController : IDisposable
     private readonly TwitchCredentialStore _store;
     private readonly TwitchOAuthClient _oauth;
     private readonly TwitchCommandQueue _queue;
+    private readonly RedemptionQueue? _redemptions;
     private readonly Action<string> _log;
     private readonly CommandSettingsController? _settings;
     private readonly TwitchChatSender _chatSender = new TwitchChatSender();
@@ -56,11 +59,13 @@ public sealed class TwitchConnectionController : IDisposable
     private int _generation;
 
     public TwitchConnectionController(string clientId, TwitchCredentialStore store, TwitchOAuthClient oauth,
-        TwitchCommandQueue queue, Action<string> log, bool legacyConfig, CommandSettingsController? settings = null)
+        TwitchCommandQueue queue, Action<string> log, bool legacyConfig, CommandSettingsController? settings = null,
+        RedemptionQueue? redemptions = null)
     {
         _clientId = clientId.Trim(); _store = store; _oauth = oauth; _queue = queue; _log = log;
         _view.LegacyConfig = legacyConfig;
         _settings = settings;
+        _redemptions = redemptions;
     }
 
     public TwitchAuthView View
@@ -70,6 +75,8 @@ public sealed class TwitchConnectionController : IDisposable
             VerificationUri = _view.VerificationUri, ExpiresAt = _view.ExpiresAt,
             Error = _view.Error, LegacyConfig = _view.LegacyConfig, ModernCredentials = _view.ModernCredentials,
             WritePermission = _view.WritePermission, ReauthorizationState = _view.ReauthorizationState,
+            ChannelPointsPermission = _view.ChannelPointsPermission,
+            ChannelPointsStatus = _eventSub?.RedemptionStatus ?? "Disconnected",
             EventSubStatus = _eventSub?.Status.ToString() ?? "Disabled"
         }; }
     }
@@ -231,7 +238,7 @@ public sealed class TwitchConnectionController : IDisposable
                             throw new UnauthorizedAccessException("Twitch identity changed.");
                         _store.Save(credentials);
                         _view.ModernCredentials = true;
-                        Activate(credentials, "Allowed");
+                        Activate(credentials, "Allowed", "Allowed");
                     } }
                     finally { _refreshGate.Release(); }
                     return;
@@ -272,22 +279,24 @@ public sealed class TwitchConnectionController : IDisposable
             UserId = identity.UserId, Login = identity.Login, ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn) };
     }
 
-    private void Activate(TwitchCredentials credentials, string writePermission)
+    private void Activate(TwitchCredentials credentials, string writePermission, string pointsPermission)
     {
         lock (_gate)
         {
             if (_disposed) return;
             _eventSub?.Dispose();
             ClearRepliesLocked();
-            if (_credentials != null && _credentials.UserId != credentials.UserId) _queue.Clear();
+            if (_credentials != null && _credentials.UserId != credentials.UserId)
+            { _queue.Clear(); _redemptions?.Clear(); }
             _credentials = credentials;
             _view.State = "Connected"; _view.Login = credentials.Login; _view.DisplayName = credentials.DisplayName; _view.Error = "";
-            _view.WritePermission = writePermission; _view.ReauthorizationState = "Idle";
+            _view.WritePermission = writePermission; _view.ChannelPointsPermission = pointsPermission;
+            _view.ReauthorizationState = "Idle";
             _view.UserCode = ""; _view.VerificationUri = ""; _view.ExpiresAt = 0;
             _eventSub = new TwitchEventSubService(new TwitchConfig {
                 Enabled = true, ClientId = _clientId, AccessToken = credentials.AccessToken,
                 BroadcasterUserId = credentials.UserId, UserId = credentials.UserId
-            }, _queue, _log);
+            }, _queue, _log, _redemptions);
             _eventSub.Start();
             _lastValidation = DateTimeOffset.UtcNow;
         }
@@ -394,10 +403,11 @@ public sealed class TwitchConnectionController : IDisposable
                 {
                     if (generation != _generation || _disposed || (_credentials != null && _credentials.UserId != saved.UserId)) return;
                     var writePermission = identity.Scopes.Contains("user:write:chat") ? "Allowed" : "AuthorizationRequired";
+                    var pointsPermission = identity.Scopes.Contains("channel:read:redemptions") ? "Allowed" : "AuthorizationRequired";
                     if (!ReferenceEquals(current, saved) || _credentials == null || _eventSub == null ||
                         _eventSub.Status == TwitchConnectionStatus.AuthenticationError)
-                        Activate(current, writePermission);
-                    else _view.WritePermission = writePermission;
+                        Activate(current, writePermission, pointsPermission);
+                    else { _view.WritePermission = writePermission; _view.ChannelPointsPermission = pointsPermission; }
                     if (writePermission != "Allowed") ClearRepliesLocked();
                     _lastValidation = DateTimeOffset.UtcNow;
                 }
@@ -445,6 +455,7 @@ public sealed class TwitchConnectionController : IDisposable
             ClearRepliesLocked();
             _eventSub?.Dispose(); _eventSub = null; _view = new TwitchAuthView { LegacyConfig = _view.LegacyConfig }; }
         _queue.Clear();
+        _redemptions?.Clear();
         try { _store.Delete(); }
         catch (Exception ex) { lock (_gate) _view.ModernCredentials = true;
             _log("[CS2TwitchCitizens] Twitch credential removal failed: " + ex.GetType().Name);

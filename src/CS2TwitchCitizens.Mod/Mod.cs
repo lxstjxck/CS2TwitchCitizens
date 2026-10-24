@@ -14,16 +14,23 @@ namespace CS2TwitchCitizens.Mod
         internal static TwitchCommandQueue? CommandQueue { get; private set; }
         internal static TwitchConnectionController? Connection { get; private set; }
         internal static CommandSettingsController? CommandSettings { get; private set; }
+        internal static RedemptionQueue? Redemptions { get; private set; }
+        internal static RewardActionRegistry? InteractiveSettings { get; private set; }
+        internal static RedemptionLedger? RedemptionLedger { get; private set; }
         internal static bool TwitchEnabled => Connection != null;
 
         public void OnLoad(UpdateSystem updateSystem)
         {
             CommandQueue = new TwitchCommandQueue();
+            Redemptions = new RedemptionQueue();
             updateSystem.UpdateAt<CitizenDiscoverySystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<CitizenBindingSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<ViewerPanelUISystem>(SystemUpdatePhase.UIUpdate);
+            updateSystem.UpdateAt<CityEventSystem>(SystemUpdatePhase.UIUpdate);
             var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CS2TwitchCitizens");
             CommandSettings = new CommandSettingsController(new CommandSettingsStore(Path.Combine(directory, "commands.json")));
+            InteractiveSettings = new RewardActionRegistry(Path.Combine(directory, "interactive.json"));
+            RedemptionLedger = new RedemptionLedger(Path.Combine(directory, "redemptions.json"));
             var path = Path.Combine(directory, "twitch.config.json");
             var clientId = TwitchClientId.Value;
             if (string.IsNullOrWhiteSpace(clientId))
@@ -36,7 +43,7 @@ namespace CS2TwitchCitizens.Mod
             }
             Connection = new TwitchConnectionController(clientId,
                 new TwitchCredentialStore(Path.Combine(directory, "twitch.credentials.dpapi")),
-                new TwitchOAuthClient(), CommandQueue, message => Log.Info(message), legacy, CommandSettings);
+                new TwitchOAuthClient(), CommandQueue, message => Log.Info(message), legacy, CommandSettings, Redemptions);
             Connection.Start();
         }
 
@@ -46,6 +53,9 @@ namespace CS2TwitchCitizens.Mod
             Connection = null;
             CommandSettings = null;
             CommandQueue = null;
+            Redemptions = null;
+            InteractiveSettings = null;
+            RedemptionLedger = null;
         }
     }
 }

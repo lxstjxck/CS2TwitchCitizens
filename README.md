@@ -1,6 +1,12 @@
 # CS2 Twitch Citizens
 
-CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.8.6 displays conditional character years using an explicit mod model of one NPC life day per year. This is separate from the city calendar. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; v0.8.6 still needs an in-game check.
+CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.0 adds a Channel Points and city event foundation. It displays viewer messages, city announcements, celebrations, and emergency alerts in the UI without changing the simulation. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the newer UI and Channel Points path still need an in-game check.
+
+## Channel Points setup
+
+Authorize the broadcaster again in **Settings** to grant `channel:read:redemptions`, in addition to `user:read:chat` and `user:write:chat`. In Twitch, create custom Channel Points rewards with viewer text input enabled, copy each reward's exact ID, and paste it into the matching action in **Interactive**. Enable Interactive events there. The mod receives [custom reward redemption add and update events](https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelchannel_points_custom_reward_redemptionadd) over the existing EventSub connection. Reward IDs are compared exactly. Unknown rewards and rewards with empty text are skipped. `GameDisaster` is unavailable; see [installed DLL research](DISASTER_RESEARCH.md).
+
+The Interactive tab offers local tests that do not redeem points or call Twitch. Notifications render viewer input as text, show reward icons from a read-only Helix lookup when available, have configurable length and display limits, and can be dismissed in game. If a viewer has an active binding, a message shows the citizen name and a Find citizen button. The city announcement, celebration, and alert actions are presentation events only. The mod does not mark redemptions fulfilled or canceled in Twitch; the streamer must manage their statuses there. Rewards set by Twitch to skip the request queue may already be fulfilled when their add notification arrives; those are displayed too. A redemption received while no city is ready is dropped. Each accepted redemption ID is persisted globally per broadcaster in `%LOCALAPPDATA%/CS2TwitchCitizens/redemptions.json` before presentation and will not execute again after restart. A process crash between reservation and display may therefore leave a redemption without a display; review Twitch's redemption queue manually. Interactive settings live in a separate `interactive.json` file and never contain OAuth tokens.
 
 Open the in-game **Commands** tab to enable commands, set viewer cooldowns and permissions, select reply fields, choose RU/EN replies, and preview a sample. Settings apply immediately and persist globally in `%LOCALAPPDATA%/CS2TwitchCitizens/commands.json`, separate from city saves and encrypted Twitch credentials. See [command fields and limits](COMMAND_FIELDS.md) for the supported field matrix.
 
@@ -12,7 +18,7 @@ The project owner must [register one Twitch application](https://dev.twitch.tv/d
 
 Open **Twitch Citizens → Settings → Connect Twitch**. Copy the displayed code and choose **Open Twitch** to authorize in the system browser. After confirmation, the mod validates the user ID and starts EventSub for that account's own channel. Use **Reconnect** to retry EventSub and **Disconnect Twitch** to stop it and remove local credentials. Disconnect does not remove residents, bindings, or life history from city saves. Loading another city keeps the Twitch account connection and restores that city's bindings.
 
-The mod requests `user:read:chat` and `user:write:chat`. The settings panel never receives access tokens, refresh tokens, device codes, or Authorization headers. It shows the one-time user code, login, connection status, and chat sending permission.
+The mod requests `user:read:chat`, `user:write:chat`, and `channel:read:redemptions`. It does not request `channel:manage:redemptions`, because it does not update reward statuses. The settings panel never receives access tokens, refresh tokens, device codes, or Authorization headers. It shows the one-time user code, login, connection status, chat sending permission, and Channel Points permission.
 
 ## Local data and migration
 
@@ -25,6 +31,8 @@ An expired or invalid access token is refreshed without blocking the game thread
 Run the C# checks with `dotnet run --project tests/CS2TwitchCitizens.Commands.Checks`. From `src/CS2TwitchCitizens.UI`, run `npx tsc --noEmit -p tsconfig.json` and `npm test`.
 
 From the repository root, the **official build, DeployWIP, and UI installation** are:
+
+At the v0.9.0 audit on 2026-10-24, C# compilation passed but the installed `ModPostProcessor` stopped with `Modding toolchain is incomplete, please reinstall it`. The official deployment therefore did not finish; repair the game's Code Mod toolchain before using this build for an in-game test.
 
 ```powershell
 .\scripts\build-official.ps1

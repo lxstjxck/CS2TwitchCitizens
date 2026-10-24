@@ -20,7 +20,7 @@ public sealed class TwitchOAuthClient : IDisposable
     public async Task<TwitchDeviceCode> RequestDeviceAsync(string clientId, CancellationToken cancellation)
     {
         using var response = await PostAsync("device", new Dictionary<string, string> {
-            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat"
+            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat channel:read:redemptions"
         }, cancellation).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException("Device authorization unavailable.");
         var code = await ReadAsync<TwitchDeviceCode>(response).ConfigureAwait(false);
@@ -34,7 +34,7 @@ public sealed class TwitchOAuthClient : IDisposable
     public async Task<TwitchToken?> PollAsync(string clientId, string deviceCode, CancellationToken cancellation)
     {
         using var response = await PostAsync("token", new Dictionary<string, string> {
-            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat", ["device_code"] = deviceCode,
+            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat channel:read:redemptions", ["device_code"] = deviceCode,
             ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code"
         }, cancellation).ConfigureAwait(false);
         if (response.IsSuccessStatusCode) return await ReadAsync<TwitchToken>(response).ConfigureAwait(false);
@@ -59,7 +59,7 @@ public sealed class TwitchOAuthClient : IDisposable
     }
 
     public async Task<TwitchIdentity> ValidateAsync(string clientId, string token, CancellationToken cancellation,
-        bool requireWrite = true)
+        bool requireAllScopes = true)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, Base + "validate");
         request.Headers.Authorization = new AuthenticationHeaderValue("OAuth", token);
@@ -69,7 +69,8 @@ public sealed class TwitchOAuthClient : IDisposable
         var identity = await ReadAsync<TwitchIdentity>(response).ConfigureAwait(false);
         if (identity.ClientId != clientId || string.IsNullOrWhiteSpace(identity.UserId) ||
             identity.Scopes == null || !identity.Scopes.Contains("user:read:chat") ||
-            (requireWrite && !identity.Scopes.Contains("user:write:chat")))
+            (requireAllScopes && (!identity.Scopes.Contains("user:write:chat") ||
+                !identity.Scopes.Contains("channel:read:redemptions"))))
             throw new UnauthorizedAccessException("Twitch account or scope mismatch.");
         return identity;
     }

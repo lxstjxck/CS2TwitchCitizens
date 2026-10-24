@@ -3,6 +3,7 @@ using CS2TwitchCitizens.Twitch;
 using System.Text.Json;
 
 await OAuthChecks.Run();
+InteractiveChecks.Run();
 await ChatSenderChecks.Run();
 ReplyQueueChecks.Run();
 

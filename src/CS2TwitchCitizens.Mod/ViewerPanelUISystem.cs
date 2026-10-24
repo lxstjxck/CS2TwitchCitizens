@@ -16,6 +16,9 @@ namespace CS2TwitchCitizens.Mod
         private ValueBinding<string> _auth = null!;
         private ValueBinding<string> _commandSettings = null!;
         private ValueBinding<string> _commandSettingsStatus = null!;
+        private ValueBinding<string> _interactive = null!;
+        private ValueBinding<string> _interactiveSettings = null!;
+        private ValueBinding<string> _interactiveSettingsStatus = null!;
         private DateTime _nextRefresh;
         private int _focusSequence;
         private string? _pendingViewerId;
@@ -36,6 +39,16 @@ namespace CS2TwitchCitizens.Mod
             _commandSettingsStatus = new ValueBinding<string>(Group, "commandSettingsStatus",
                 Mod.CommandSettings?.LoadFailed == true ? "Recovered" : string.Empty, null, null);
             AddBinding(_commandSettingsStatus);
+            _interactive = new ValueBinding<string>(Group, "interactive", "{}", null, null);
+            _interactiveSettings = new ValueBinding<string>(Group, "interactiveSettings", "{}", null, null);
+            _interactiveSettingsStatus = new ValueBinding<string>(Group, "interactiveSettingsStatus",
+                Mod.InteractiveSettings?.LoadFailed == true ? "Recovered" : string.Empty, null, null);
+            AddBinding(_interactive);
+            AddBinding(_interactiveSettings);
+            AddBinding(_interactiveSettingsStatus);
+            AddBinding(new TriggerBinding<string>(Group, "updateInteractiveSettings", UpdateInteractiveSettings, null));
+            AddBinding(new TriggerBinding<string>(Group, "testInteractive", TestInteractive, null));
+            AddBinding(new TriggerBinding<string>(Group, "dismissInteractive", _ => World.GetExistingSystemManaged<CityEventSystem>()?.Dismiss(), null));
             AddBinding(new TriggerBinding<string>(Group, "updateCommandSettings", UpdateCommandSettings, null));
             AddBinding(new TriggerBinding<string>(Group, "connectTwitch", _ => Mod.Connection?.Connect(), null));
             AddBinding(new TriggerBinding<string>(Group, "cancelTwitch", _ => Mod.Connection?.Cancel(), null));
@@ -74,6 +87,26 @@ namespace CS2TwitchCitizens.Mod
             _snapshot.Update(snapshot.ToJson());
             _auth.Update(auth.ToJson());
             _commandSettings.Update((Mod.CommandSettings?.Current ?? CommandSettings.Defaults()).ToJson());
+            _interactiveSettings.Update((Mod.InteractiveSettings?.Current ?? InteractiveSettings.Defaults()).ToJson());
+            _interactive.Update(World.GetExistingSystemManaged<CityEventSystem>()?.SnapshotJson ?? "{}");
+        }
+
+        private void UpdateInteractiveSettings(string json)
+        {
+            try
+            {
+                Mod.InteractiveSettings?.Update(json);
+                _interactiveSettingsStatus.Update(string.Empty);
+                _nextRefresh = DateTime.MinValue;
+            }
+            catch (Exception ex) { _interactiveSettingsStatus.Update("SaveFailed");
+                Mod.Log.Info("[CS2TwitchCitizens] Interactive settings update failed: " + ex.GetType().Name); }
+        }
+
+        private void TestInteractive(string action)
+        {
+            World.GetExistingSystemManaged<CityEventSystem>()?.Test(action);
+            _nextRefresh = DateTime.MinValue;
         }
 
         private void UpdateCommandSettings(string json)

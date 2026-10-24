@@ -25,6 +25,8 @@ internal static class OAuthChecks
         }
         using (var noRead = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:write:chat"))))
             await Expect<UnauthorizedAccessException>(() => noRead.ValidateAsync("public-client", "write-only", CancellationToken.None, false));
+        using (var noPoints = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:read:chat\",\"user:write:chat"))))
+            await Expect<UnauthorizedAccessException>(() => noPoints.ValidateAsync("public-client", "chat-only", CancellationToken.None));
         Check(await oauth.GetDisplayNameAsync("public-client", token.AccessToken, CancellationToken.None) == "Streamer");
         var refreshed = await oauth.RefreshAsync("public-client", token.RefreshToken, CancellationToken.None);
         Check(refreshed.AccessToken == "access-2" && refreshed.RefreshToken == "refresh-2");
@@ -113,7 +115,8 @@ internal static class OAuthChecks
             HttpStatusCode status = HttpStatusCode.OK;
             if (path.EndsWith("/device"))
             {
-                Check(body.Contains("user%3Aread%3Achat") && body.Contains("user%3Awrite%3Achat") && body.Contains("client_id=public-client"));
+                Check(body.Contains("user%3Aread%3Achat") && body.Contains("user%3Awrite%3Achat") &&
+                    body.Contains("channel%3Aread%3Aredemptions") && body.Contains("client_id=public-client"));
                 json = "{\"device_code\":\"device-1\",\"user_code\":\"ABCD\",\"verification_uri\":\"https://www.twitch.tv/activate\",\"expires_in\":120,\"interval\":5}";
             }
             else if (path.EndsWith("/token") && body.Contains("device_code"))
@@ -125,7 +128,7 @@ internal static class OAuthChecks
             else if (path.EndsWith("/validate"))
             {
                 Check(request.Headers.Authorization?.Scheme == "OAuth");
-                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\",\"user:write:chat\"]}";
+                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\",\"user:write:chat\",\"channel:read:redemptions\"]}";
             }
             else if (path.EndsWith("/users"))
             {

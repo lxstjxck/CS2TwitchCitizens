@@ -31,6 +31,7 @@ namespace CS2TwitchCitizens.Mod
         private List<ViewerLifeAccount<Entity>>? _pendingRestore;
         private bool _loadReady;
         private bool _loadFailed;
+        public bool IsCityReady => _loadReady && !_loadFailed;
         private DateTime _nextLifeCheck;
         private readonly Dictionary<string, CitizenDisplayIdentity> _identities =
             new Dictionary<string, CitizenDisplayIdentity>(StringComparer.Ordinal);
@@ -71,6 +72,8 @@ namespace CS2TwitchCitizens.Mod
             _missingObservations.Clear();
             _diagnoseRestoredBindings = false;
             Mod.CommandQueue?.Clear();
+            Mod.Redemptions?.Clear();
+            World.GetExistingSystemManaged<CityEventSystem>()?.ResetCity();
             _commandGate.Clear();
             Mod.Connection?.ClearReplies();
             Mod.Log.Info($"[CS2TwitchCitizens] LIFE preload purpose={purpose} mode={mode}; city state cleared");
@@ -95,6 +98,8 @@ namespace CS2TwitchCitizens.Mod
                 _missingObservations.Clear();
                 _diagnoseRestoredBindings = false;
                 Mod.CommandQueue?.Clear();
+                Mod.Redemptions?.Clear();
+                World.GetExistingSystemManaged<CityEventSystem>()?.ResetCity();
                 _commandGate.Clear();
                 Mod.Connection?.ClearReplies();
                 return;

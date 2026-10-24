@@ -156,7 +156,7 @@ assert.match(css, /\.nameLabel\s*\{[^}]*white-space:\s*nowrap/s);
 assert.match(css, /\.nameValue\s*\{[^}]*overflow-wrap:\s*break-word/s);
 const bindings = fs.readFileSync(path.join(__dirname, "../../CS2TwitchCitizens.Mod/ViewerPanelUISystem.cs"), "utf8");
 assert.match(jsx, /bindTriggerWithArgs<\[string\]>\(group, "reauthorizeTwitch"\)/);
-assert.match(jsx, /auth\.writePermission === "AuthorizationRequired" && auth\.state === "Connected"/);
+assert.match(jsx, /auth\.writePermission === "AuthorizationRequired" \|\| auth\.channelPointsPermission === "AuthorizationRequired"/);
 assert.match(jsx, /auth\.reauthorizationState === "Pending"/);
 assert.match(bindings, /TriggerBinding<string>\(Group, "reauthorizeTwitch"/);
 for (const locale of ["ru", "en"]) {

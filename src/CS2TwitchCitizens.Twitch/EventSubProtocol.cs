@@ -44,13 +44,25 @@ public sealed class EventSubSubscription
 [DataContract]
 public sealed class EventSubChatEvent
 {
+    [DataMember(Name = "id")] public string? Id { get; set; }
     [DataMember(Name = "broadcaster_user_id")] public string? BroadcasterUserId { get; set; }
+    [DataMember(Name = "user_id")] public string? UserId { get; set; }
+    [DataMember(Name = "user_name")] public string? UserName { get; set; }
+    [DataMember(Name = "user_input")] public string? UserInput { get; set; }
+    [DataMember(Name = "status")] public string? Status { get; set; }
+    [DataMember(Name = "reward")] public EventSubReward? Reward { get; set; }
     [DataMember(Name = "chatter_user_id")] public string? ChatterUserId { get; set; }
     [DataMember(Name = "chatter_user_login")] public string? ChatterUserLogin { get; set; }
     [DataMember(Name = "chatter_user_name")] public string? ChatterUserName { get; set; }
     [DataMember(Name = "message_id")] public string? MessageId { get; set; }
     [DataMember(Name = "badges")] public EventSubBadge[]? Badges { get; set; }
     [DataMember(Name = "message")] public EventSubChatMessage? Message { get; set; }
+}
+
+[DataContract]
+public sealed class EventSubReward
+{
+    [DataMember(Name = "id")] public string? Id { get; set; }
 }
 
 [DataContract]
@@ -67,6 +79,30 @@ public sealed class EventSubChatMessage
 
 public static class EventSubProtocol
 {
+    public const string RedemptionType = "channel.channel_points_custom_reward_redemption.add";
+    public const string RedemptionUpdateType = "channel.channel_points_custom_reward_redemption.update";
+
+    public static bool TryGetRedemption(EventSubEnvelope envelope, string broadcasterUserId,
+        DateTimeOffset receivedAt, out RedemptionEvent? redemption)
+    {
+        redemption = null;
+        var data = envelope.Payload?.Event;
+        var type = envelope.Payload?.Subscription?.Type;
+        if (envelope.Metadata?.MessageType != "notification" ||
+            (type != RedemptionType && type != RedemptionUpdateType) ||
+            data?.BroadcasterUserId != broadcasterUserId ||
+            string.IsNullOrWhiteSpace(data.Id) || string.IsNullOrWhiteSpace(data.Reward?.Id) ||
+            string.IsNullOrWhiteSpace(data.UserId) ||
+            (type == RedemptionType && data.Status != "unfulfilled" && data.Status != "fulfilled") ||
+            (type == RedemptionUpdateType && data.Status != "canceled" && data.Status != "fulfilled") ||
+            data.UserInput?.Length > 4096)
+            return false;
+        redemption = new RedemptionEvent { RedemptionId = data.Id!, RewardId = data.Reward!.Id!,
+            BroadcasterId = data.BroadcasterUserId!, TwitchUserId = data.UserId!,
+            DisplayName = data.UserName ?? "", UserInput = data.UserInput ?? "",
+            Status = data.Status!, IsUpdate = type == RedemptionUpdateType, ReceivedAt = receivedAt };
+        return true;
+    }
     public static bool TryGetReconnectUri(EventSubEnvelope envelope, out Uri? uri)
     {
         uri = null;
