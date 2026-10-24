@@ -15,7 +15,8 @@ Experimental: features and UI behavior are still being tested in live games. Mak
   <Tag Value="Code Mod" />
   <ModVersion Value="0.9.2" />
   <!-- Verified in the locally installed game's Player.log on 2026-10-24. Recheck before publication. -->
-  <GameVersion Value="1.6.2f1" />
+  <GameVersion Value="1.6.*" />
+  <ChangeLog Value="Updated compatibility metadata for Cities: Skylines II 1.6.x." />
   <ExternalLink Type="github" Url="https://github.com/lxstjxck/CS2TwitchCitizens" />
   <AccessLevel Value="Unlisted" />
 </Publish>

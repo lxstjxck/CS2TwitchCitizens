@@ -75,10 +75,17 @@ if (-not (Test-Path -LiteralPath $publisherPath -PathType Leaf)) {
 $commands = @{ FirstPublish = 'Publish'; NewVersion = 'NewVersion'; UpdateMetadata = 'Update' }
 $publisherCommand = $commands[$Operation]
 $arguments = @($publisherCommand, $configPath)
+
 if ($Operation -ne 'UpdateMetadata') {
-& (Join-Path $PSScriptRoot 'verify-release.ps1') -StageDir $stage -CheckManifest -ForPublishing
-    $arguments += @('-c', $stage)
+    & (Join-Path $PSScriptRoot 'verify-release.ps1') `
+        -StageDir $stage -CheckManifest -ForPublishing
 }
+elseif (-not (Test-Path -LiteralPath $stage -PathType Container)) {
+    throw "Release content folder not found: $stage"
+}
+
+# ModPublisher requires a content folder for Update too.
+$arguments += @('-c', $stage)
 
 Write-Host "Mod: $displayName"
 Write-Host "Version: $version"
@@ -86,7 +93,7 @@ Write-Host "Access: $access"
 Write-Host "ModId: $(if ($modId) { $modId } else { '(new listing)' })"
 Write-Host "Publisher command: $publisherCommand"
 if ($Operation -ne 'UpdateMetadata') { Write-Host "Upload directory: $stage" }
-else { Write-Host 'Metadata update only: no binary content folder will be sent.' }
+else { Write-Host 'Metadata update; content folder supplied as required by ModPublisher.' }
 Write-Host 'The installed Publisher may ask for Paradox authentication. No credentials are stored by this script.'
 $confirmation = Read-Host "Type PUBLISH $Operation to authorize the network operation"
 if ($confirmation -cne "PUBLISH $Operation") { throw 'Publication cancelled: explicit confirmation was not given.' }
