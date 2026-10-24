@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Publish>
   <!-- Fill only after the first successful publication. Keep this ID for later versions. -->
-  <ModId Value="" />
+  <ModId Value="164740" />
   <DisplayName Value="CS2 Twitch Citizens" />
   <ShortDescription Value="Connect Twitch viewers to citizens in Cities: Skylines II, with chat commands, citizen tracking, and interactive Channel Points rewards." />
   <LongDescription>

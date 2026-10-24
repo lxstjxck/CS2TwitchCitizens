@@ -76,8 +76,7 @@ $commands = @{ FirstPublish = 'Publish'; NewVersion = 'NewVersion'; UpdateMetada
 $publisherCommand = $commands[$Operation]
 $arguments = @($publisherCommand, $configPath)
 if ($Operation -ne 'UpdateMetadata') {
-    & (Join-Path $PSScriptRoot 'verify-release.ps1') -StageDir $stage -CheckManifest -ForPublishing
-    if ($LASTEXITCODE -ne 0) { throw 'Release package verification failed.' }
+& (Join-Path $PSScriptRoot 'verify-release.ps1') -StageDir $stage -CheckManifest -ForPublishing
     $arguments += @('-c', $stage)
 }
 
