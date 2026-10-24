@@ -19,19 +19,22 @@ internal static class RewardManagerChecks
             IsUserInputRequired = true, IsGlobalCooldownEnabled = true, GlobalCooldownSeconds = 60 };
         Check((await api.CreateAsync("client", "token", "42", edit, CancellationToken.None)).Id == "reward-1");
         Check((await api.UpdateAsync("client", "token", "42", "reward-1", edit, CancellationToken.None)).Cost == 250);
+        await api.PatchAsync("client", "token", "42", "reward-1",
+            new TwitchRewardPatch { Cost = 250 }, CancellationToken.None);
         var pending = await api.ListRedemptionsAsync("client", "token", "42", "reward-1", "UNFULFILLED", CancellationToken.None);
         Check(pending.Length == 1 && pending[0].Status == "UNFULFILLED");
         Check((await api.GetRedemptionAsync("client", "token", "42", "reward-1", "redeem-1", CancellationToken.None)).Id == "redeem-1");
         Check((await api.SetRedemptionStatusAsync("client", "token", "42", "reward-1", "redeem-1",
             "CANCELED", CancellationToken.None)).Status == "CANCELED");
         await api.DeleteAsync("client", "token", "42", "reward-1", CancellationToken.None);
-        Check(handler.Requests.Count == 8);
+        Check(handler.Requests.Count == 9);
         Check(handler.Requests[2].Body!.Contains("\"cost\":250") &&
             handler.Requests[2].Body!.Contains("\"is_user_input_required\":true"));
+        Check(handler.Requests[4].Body == "{\"cost\":250}" && handler.Requests[4].Method.Method == "PATCH");
         Check(handler.Requests[2].Uri.Query == "?broadcaster_id=42");
-        Check(handler.Requests[4].Uri.AbsolutePath.EndsWith("/custom_rewards/redemptions") &&
-            handler.Requests[4].Uri.Query.Contains("reward_id=reward-1"));
-        Check(handler.Requests[6].Body!.Contains("\"status\":\"CANCELED\""));
+        Check(handler.Requests[5].Uri.AbsolutePath.EndsWith("/custom_rewards/redemptions") &&
+            handler.Requests[5].Uri.Query.Contains("reward_id=reward-1"));
+        Check(handler.Requests[7].Body!.Contains("\"status\":\"CANCELED\""));
         Check(handler.Requests.All(r => r.ClientId == "client" && r.Authorization == "Bearer token"));
 
         var failed = new Handler { FailCreate = true };

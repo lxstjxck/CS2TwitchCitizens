@@ -17,6 +17,7 @@ namespace CS2TwitchCitizens.Mod
         private DateTimeOffset _activeUntil;
         private CityEventRecord? _active;
         private bool _wasLoaded;
+        private bool _wasConnected;
         private string _lastError = "";
         public string SnapshotJson => new CityEventSnapshot {
             Events = _recent, Active = _active, Queued = (Mod.Redemptions?.Count ?? 0) + _presentation.Count,
@@ -31,16 +32,27 @@ namespace CS2TwitchCitizens.Mod
                 World.GetExistingSystemManaged<CitizenBindingSystem>()?.IsCityReady == true;
             if (!loaded && _wasLoaded) ResetCity();
             _wasLoaded = loaded;
+            var connection = Mod.Connection?.View;
+            var connected = connection?.State == "Connected" && connection.EventSubStatus == "Connected";
+            if (!connected && _wasConnected) ResetCity();
+            _wasConnected = connected;
+            if (!loaded) { Mod.Redemptions?.Clear(); return; }
+            if (!connected) Mod.Redemptions?.Clear();
             if (_active != null && DateTimeOffset.UtcNow >= _activeUntil) ShowNext();
             if (_active == null && _presentation.Count > 0) ShowNext();
-            if (!loaded) { Mod.Redemptions?.Clear(); return; }
-            if (Mod.Redemptions == null) return;
+            if (!connected || Mod.Redemptions == null) return;
             for (var i = 0; i < 4 && Mod.Redemptions.TryDequeue(out var redemption); i++)
                 Process(redemption!);
         }
 
         public void ResetCity()
         {
+            foreach (var record in _presentation.Concat(_active == null ? Array.Empty<CityEventRecord>() :
+                new[] { _active }))
+                if (!string.IsNullOrEmpty(record.RedemptionId) && record.State != "Completed")
+                    try { Mod.RedemptionLedger?.Finish(record.BroadcasterId, record.RedemptionId,
+                        RedemptionLedger.ManualReview); }
+                    catch { _lastError = "LedgerWriteFailed"; }
             Mod.Redemptions?.Clear();
             _recent.Clear(); _lastAction.Clear(); _presentation.Clear(); _active = null; _lastError = "";
         }
@@ -90,7 +102,7 @@ namespace CS2TwitchCitizens.Mod
                         RedemptionId = redemption.RedemptionId, RewardId = redemption.RewardId,
                         State = "Received",
                         ReceivedAt = redemption.ReceivedAt.ToString("O"), Text = text,
-                        DisplaySeconds = rule.DisplaySeconds
+                        DisplaySeconds = rule.Action == InteractiveAction.CityAnnouncement ? 30 : 8
                     };
                     if (rule.Action == InteractiveAction.ShowMessage)
                     {
@@ -106,7 +118,7 @@ namespace CS2TwitchCitizens.Mod
                     }
                     if (Execute(record)) { _lastAction[rule.RewardId] = DateTimeOffset.UtcNow;
                         result = RedemptionLedger.AwaitingExecution; }
-                    else result = "ExecutorFailed";
+                    else result = "QueueFull";
                 }
                 ledger.Finish(redemption.BroadcasterId, redemption.RedemptionId, result);
                 if (result != RedemptionLedger.AwaitingExecution)
@@ -116,7 +128,7 @@ namespace CS2TwitchCitizens.Mod
                         Type = rule?.Action ?? "UnknownReward", TwitchUserId = redemption.TwitchUserId,
                         BroadcasterId = redemption.BroadcasterId, DisplayName = InteractivePolicy.Clean(redemption.DisplayName, 50),
                         RedemptionId = redemption.RedemptionId, RewardId = redemption.RewardId,
-                        State = "Skipped", Result = result,
+                        State = "Skipped", Result = result, Text = text,
                         ReceivedAt = redemption.ReceivedAt.ToString("O") });
                 }
             }
@@ -131,7 +143,7 @@ namespace CS2TwitchCitizens.Mod
 
         public bool Execute(CityEventRecord record)
         {
-            if (record.Type == InteractiveAction.GameDisaster) return false;
+            if (record.Type is not (InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement or "CitizenMessage")) return false;
             if (_presentation.Count >= 16) return false;
             record.State = "Queued";
             record.Result = "Waiting for display";
@@ -148,12 +160,24 @@ namespace CS2TwitchCitizens.Mod
 
         private void ShowNext()
         {
+            if (_active != null && _active.State == "AwaitingDisplay")
+            {
+                _active.State = "Skipped";
+                _active.Result = "UI did not acknowledge display";
+                if (!string.IsNullOrEmpty(_active.RedemptionId))
+                    try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId,
+                        RedemptionLedger.ManualReview); }
+                    catch { _lastError = "LedgerWriteFailed"; }
+            }
+            else if (_active != null && _active.State == "Completed")
+            { _active.State = "Closed"; _active.Result = "Displayed and closed"; }
             _active = _presentation.Count > 0 ? _presentation.Dequeue() : null;
             if (_active != null)
             {
                 _active.State = "AwaitingDisplay";
                 _active.Result = "Waiting for UI acknowledgement";
-                _activeUntil = DateTimeOffset.UtcNow.AddSeconds(_active.DisplaySeconds);
+                // Give the UI time to acknowledge; the visible duration starts at acknowledgement.
+                _activeUntil = DateTimeOffset.UtcNow.AddSeconds(30);
                 if (!string.IsNullOrEmpty(_active.RedemptionId))
                     try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId,
                         RedemptionLedger.ExecutedInGame); }
@@ -167,6 +191,8 @@ namespace CS2TwitchCitizens.Mod
             if (_active == null || _active.Id != id || _active.State != "AwaitingDisplay") return;
             _active.State = "Completed";
             _active.Result = "UI displayed; no simulation change";
+            _activeUntil = DateTimeOffset.UtcNow.AddSeconds(
+                _active.Type == InteractiveAction.CityAnnouncement ? 30 : 8);
             if (string.IsNullOrEmpty(_active.RedemptionId)) return;
             try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId,
                 RedemptionLedger.AwaitingTwitchConfirmation); }
@@ -175,8 +201,7 @@ namespace CS2TwitchCitizens.Mod
             if (Mod.RedemptionLedger?.Get(_active.BroadcasterId, _active.RedemptionId) ==
                 RedemptionLedger.AwaitingTwitchConfirmation &&
                 Mod.InteractiveSettings?.Find(_active.RewardId) is { AutoFulfill: true } rule &&
-                (rule.Action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement or
-                    InteractiveAction.CityCelebration or InteractiveAction.EmergencyAlert))
+                (rule.Action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement))
                 Mod.Rewards?.EnqueueAutoFulfill(_active.BroadcasterId, _active.RewardId, _active.RedemptionId);
         }
 
@@ -184,14 +209,14 @@ namespace CS2TwitchCitizens.Mod
         {
             if (GameManager.instance.gameMode != GameMode.Game ||
                 World.GetExistingSystemManaged<CitizenBindingSystem>()?.IsCityReady != true ||
-                action is not (InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement or
-                    InteractiveAction.CityCelebration or InteractiveAction.EmergencyAlert)) return;
+                action is not (InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement)) return;
             Execute(new CityEventRecord { Id = Guid.NewGuid().ToString("N"), Type = action,
                 DisplayName = "Local test", Text = "Cities: Skylines II interactive preview",
-                ReceivedAt = DateTimeOffset.UtcNow.ToString("O"), LocalTest = true });
+                ReceivedAt = DateTimeOffset.UtcNow.ToString("O"), LocalTest = true,
+                DisplaySeconds = action == InteractiveAction.CityAnnouncement ? 30 : 8 });
         }
 
-        public void Dismiss() => ShowNext();
+        public void Dismiss(string id) { if (_active?.Id == id) ShowNext(); }
 
     }
 }

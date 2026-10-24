@@ -68,7 +68,8 @@ public static class InteractivePolicy
         text = rule == null ? "" : Clean(redemption.UserInput, rule.MaxTextLength);
         if (!settings.Enabled) return "InteractiveDisabled";
         if (rule == null || !rule.Enabled) return "UnknownOrDisabledReward";
-        if (rule.Action == InteractiveAction.GameDisaster) return "DisasterUnavailable";
+        if (rule.Action is not (InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement))
+            return "LegacyRewardUnavailable";
         if (redemption.Status != "unfulfilled" && redemption.Status != "fulfilled") return "CanceledOrCompleted";
         if (text.Length == 0 && rule.Action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement)
             return "EmptyMessage";

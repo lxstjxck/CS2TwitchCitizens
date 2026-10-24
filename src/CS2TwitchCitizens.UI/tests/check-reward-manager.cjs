@@ -12,24 +12,25 @@ const moduleObject = { exports: {} };
 const localRequire = spec => {
   if (spec === "react" || spec === "react/jsx-runtime") return require(spec);
   if (spec === "cs2/ui") return { Button: ({ children, disabled }) => React.createElement("button", { disabled }, children) };
-  if (spec.endsWith(".module.scss")) return new Proxy({}, { get: (_, key) => String(key) });
+  if (spec.endsWith(".module.scss")) return { __esModule: true,
+    default: new Proxy({}, { get: (_, key) => String(key) }) };
   throw new Error(`Unexpected import: ${spec}`);
 };
 new Function("require", "module", "exports", compiled.outputText)(localRequire, moduleObject, moduleObject.exports);
 const { parseRewardSnapshot, RewardManagerPanel } = moduleObject.exports;
-assert.deepEqual(parseRewardSnapshot("broken").items, []);
-assert.deepEqual(parseRewardSnapshot('{"items":null,"manageableIds":"invalid"}').items, []);
-const snapshot = parseRewardSnapshot(JSON.stringify({ broadcasterId: "42", items: [
-  { id: "r1", title: "Награда", cost: 250, is_enabled: true } ],
-  manageableIds: [], redemptions: [], busy: false, status: "" }));
-assert.equal(snapshot.items.length, 1);
+assert.deepEqual(parseRewardSnapshot("broken").fixedRewards, []);
+assert.deepEqual(parseRewardSnapshot('{"fixedRewards":null}').fixedRewards, []);
+const snapshot = parseRewardSnapshot(JSON.stringify({ broadcasterId: "42", items: [],
+  fixedRewards: [{ templateId: "ShowMessage", rewardId: "r1", cost: 750, enabled: true, status: "Synced" },
+    { templateId: "CityAnnouncement", rewardId: "", cost: 1000, enabled: false, status: "Missing" }],
+  legacyActive: ["old-reward"], redemptions: [], busy: false, status: "" }));
 for (const locale of ["ru", "en"]) {
   const html = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
-    locale, snapshot, rules: [], permission: "AuthorizationRequired",
-    onCommand() {}, onReauthorize() {}, onRuleChange() {} }));
-  assert.ok(html.includes("Награда") && html.includes("250"));
-  assert.ok(html.includes(locale === "ru" ? "Синхронизировать с Twitch" : "Sync with Twitch"));
-  assert.ok(html.includes(locale === "ru" ? "Внешняя" : "External"));
+    locale, snapshot, permission: "Allowed", onCommand() {}, onReauthorize() {} }));
+  assert.ok(html.includes(locale === "ru" ? "Сообщение в город" : "Message to the city"));
+  assert.ok(html.includes(locale === "ru" ? "Городское объявление" : "City announcement"));
+  assert.ok(html.includes("750") && html.includes("1000") && html.includes("old-reward"));
+  assert.ok(!html.includes("Delete reward") && !html.includes("Color HEX") && !html.includes("Reward ID"));
   assert.ok(!html.includes("access_token") && !html.includes("Bearer"));
 }
-console.log("PASS: reward manager malformed snapshots, RU/EN rendering, external ownership labels, no secrets");
+console.log("PASS: fixed reward cards, prices, migration warning, and no generic editor");

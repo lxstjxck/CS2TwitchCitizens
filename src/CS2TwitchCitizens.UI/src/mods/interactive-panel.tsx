@@ -14,7 +14,7 @@ export type InteractiveState = { events: InteractiveEvent[]; active: Interactive
 type RewardRule = { rewardId: string; action: string; enabled: boolean; maxTextLength: number;
   cooldownSeconds: number; displaySeconds: number; autoFulfill?: boolean };
 export type InteractiveSettings = { version: number; enabled: boolean; destructiveEnabled: boolean; rewards: RewardRule[] };
-export const actions = ["ShowMessage", "CityAnnouncement", "CityCelebration", "EmergencyAlert", "GameDisaster"] as const;
+export const actions = ["ShowMessage", "CityAnnouncement"] as const;
 const defaults: InteractiveSettings = { version: 1, enabled: false, destructiveEnabled: false, rewards: [] };
 
 export function parseInteractiveState(json: string): InteractiveState {
@@ -39,7 +39,7 @@ export function parseInteractiveSettings(json: string): InteractiveSettings {
 
 const label = (locale: Locale, en: string, ru: string) => locale === "ru" ? ru : en;
 const actionLabel = (action: string, locale: Locale) => ({
-  ShowMessage: label(locale, "Viewer message", "Сообщение зрителя"),
+  ShowMessage: label(locale, "Message to the city", "Сообщение в город"),
   CityAnnouncement: label(locale, "City announcement", "Городское объявление"),
   CityCelebration: label(locale, "City celebration", "Праздник города"),
   EmergencyAlert: label(locale, "Emergency alert", "Тревожное объявление"),
@@ -51,6 +51,20 @@ export function InteractiveNotice({ event, locale, onDismiss, onFind, onShown }:
   locale: Locale; onDismiss: () => void; onFind: (id: string) => void; onShown: (id: string) => void }) {
   useEffect(() => { if (event?.id) onShown(event.id); }, [event?.id]);
   if (!event) return null;
+  if (event.type === "CityAnnouncement") return <div className={styles.cityAnnouncement}
+      role="status" data-type={event.type}>
+    <div className={styles.interactiveNoticeHead}>
+      <strong><span className={styles.rewardMark} aria-hidden="true">◈</span>
+        {label(locale, "CITY ANNOUNCEMENT", "ГОРОДСКОЕ ОБЪЯВЛЕНИЕ")}</strong>
+      <Button variant="default" className={styles.control} onSelect={onDismiss}
+        aria-label={label(locale, "Dismiss", "Скрыть")}>×</Button>
+    </div>
+    <p className={styles.announcementText}>{event.text}</p>
+    <span>{label(locale, "Author: ", "Автор: ")}{event.displayName || label(locale, "Viewer", "Зритель")}</span>
+    {event.localTest && <small>{label(locale, "Local test", "Локальный тест")}</small>}
+    <Button variant="default" className={styles.control} onSelect={onDismiss}>
+      {label(locale, "Close announcement", "Закрыть объявление")}</Button>
+  </div>;
   return <div className={styles.interactiveNotice} role="status" data-type={event.type}>
     <div className={styles.interactiveNoticeHead}>
       <strong><span className={styles.rewardMark} aria-hidden="true">★</span>
@@ -89,7 +103,7 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
       <strong>{label(locale, "Message previews", "Предпросмотр сообщений")}</strong>
       <p>{label(locale, "Local tests show sample text in the city without using Twitch or spending points.",
         "Локальные тесты показывают пример текста в городе без Twitch и списания баллов.")}</p>
-      <div className={styles.interactiveButtons}>{actions.filter(a => a !== "GameDisaster").map(action =>
+      <div className={styles.interactiveButtons}>{actions.map(action =>
         <Button key={action} variant="default" className={styles.control} onSelect={() => onTest(action)}>
           {actionLabel(action, locale)}</Button>)}</div>
     </div>}
@@ -123,6 +137,9 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
     {state.events.length === 0 && <p>{label(locale, "No events yet", "Событий пока нет")}</p>}
     {state.events.map(event => <div key={event.id} className={styles.interactiveEvent}>
       <strong>{actionLabel(event.type, locale)}</strong> · {event.displayName || "Twitch"}
+      {event.twitchUserId && <small>Twitch ID: {event.twitchUserId}</small>}
+      {event.receivedAt && <small>{event.receivedAt}</small>}
+      <small>{event.state}</small>
       {event.localTest && <small> {label(locale, "(local test)", "(локальный тест)")}</small>}
       <p>{event.text}</p>
       <small>{event.result}</small>

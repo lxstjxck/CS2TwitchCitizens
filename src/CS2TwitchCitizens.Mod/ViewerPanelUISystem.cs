@@ -52,7 +52,7 @@ namespace CS2TwitchCitizens.Mod
             AddBinding(new TriggerBinding<string>(Group, "rewardCommand", value => Mod.Rewards?.Submit(value), null));
             AddBinding(new TriggerBinding<string>(Group, "updateInteractiveSettings", UpdateInteractiveSettings, null));
             AddBinding(new TriggerBinding<string>(Group, "testInteractive", TestInteractive, null));
-            AddBinding(new TriggerBinding<string>(Group, "dismissInteractive", _ => World.GetExistingSystemManaged<CityEventSystem>()?.Dismiss(), null));
+            AddBinding(new TriggerBinding<string>(Group, "dismissInteractive", id => World.GetExistingSystemManaged<CityEventSystem>()?.Dismiss(id), null));
             AddBinding(new TriggerBinding<string>(Group, "ackInteractive", id => World.GetExistingSystemManaged<CityEventSystem>()?.Acknowledge(id), null));
             AddBinding(new TriggerBinding<string>(Group, "updateCommandSettings", UpdateCommandSettings, null));
             AddBinding(new TriggerBinding<string>(Group, "connectTwitch", _ => Mod.Connection?.Connect(), null));
@@ -101,7 +101,12 @@ namespace CS2TwitchCitizens.Mod
         {
             try
             {
-                Mod.InteractiveSettings?.Update(json);
+                if (json.Length > 32768) throw new System.IO.InvalidDataException();
+                var requested = InteractiveSettings.FromJson(json);
+                requested.Validate();
+                var current = Mod.InteractiveSettings?.Current ?? InteractiveSettings.Defaults();
+                current.Enabled = requested.Enabled;
+                Mod.InteractiveSettings?.Update(current.ToJson());
                 _interactiveSettingsStatus.Update(string.Empty);
                 _nextRefresh = DateTime.MinValue;
             }

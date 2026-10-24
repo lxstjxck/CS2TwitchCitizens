@@ -144,7 +144,7 @@ export const TwitchCitizensButton = () => {
       {text(locale, "open")} {snapshot.viewers.length > 0 ? `(${snapshot.viewers.length})` : ""}
     </Button>
     <InteractiveNotice event={interactive.active} locale={locale}
-      onDismiss={() => dismissInteractive("")} onFind={id => focusCitizen(id)}
+      onDismiss={() => { if (interactive.active) dismissInteractive(interactive.active.id); }} onFind={id => focusCitizen(id)}
       onShown={id => ackInteractive(id)} />
   </div>;
 };

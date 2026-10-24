@@ -46,6 +46,17 @@ public sealed class TwitchRewardManager : IDisposable
         return Single(data.Data);
     }
 
+    public async Task<TwitchReward> PatchAsync(string clientId, string token, string broadcasterId,
+        string rewardId, TwitchRewardPatch patch, CancellationToken cancellation)
+    {
+        RequireId(rewardId);
+        if (patch.Cost is < 1 || (patch.Cost == null && patch.IsEnabled == null))
+            throw new ArgumentException("Invalid reward patch.", nameof(patch));
+        var data = await SendAsync<TwitchRewardList>(new HttpMethod("PATCH"), RewardUri(broadcasterId) +
+            "&id=" + Uri.EscapeDataString(rewardId), patch, clientId, token, cancellation, false);
+        return Single(data.Data);
+    }
+
     public async Task DeleteAsync(string clientId, string token, string broadcasterId, string rewardId,
         CancellationToken cancellation)
     {
@@ -160,6 +171,13 @@ public sealed class TwitchRewardException : Exception
     public int StatusCode { get; }
     public TwitchRewardException(int statusCode) : base("Twitch reward API returned HTTP " + statusCode + ".")
         => StatusCode = statusCode;
+}
+
+[DataContract]
+public sealed class TwitchRewardPatch
+{
+    [DataMember(Name = "cost", EmitDefaultValue = false)] public long? Cost { get; set; }
+    [DataMember(Name = "is_enabled", EmitDefaultValue = false)] public bool? IsEnabled { get; set; }
 }
 
 [DataContract]

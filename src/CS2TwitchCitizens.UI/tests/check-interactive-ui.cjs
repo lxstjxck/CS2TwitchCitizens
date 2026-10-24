@@ -13,7 +13,8 @@ const localRequire = spec => {
   if (spec === "react" || spec === "react/jsx-runtime") return require(spec);
   if (spec === "cs2/ui") return { Button: ({ children, ...props }) => React.createElement("button", {}, children) };
   if (spec === "./reward-manager") return { RewardManagerPanel: () => React.createElement("div", {}, "Rewards") };
-  if (spec.endsWith(".module.scss")) return new Proxy({}, { get: (_, key) => String(key) });
+  if (spec.endsWith(".module.scss")) return { __esModule: true,
+    default: new Proxy({}, { get: (_, key) => String(key) }) };
   throw new Error(`Unexpected import: ${spec}`);
 };
 new Function("require", "module", "exports", compiled.outputText)(localRequire, moduleObject, moduleObject.exports);
@@ -34,6 +35,11 @@ for (const locale of ["ru", "en"]) {
   const escaped = ReactDOMServer.renderToStaticMarkup(React.createElement(InteractiveNotice,
     { event: { ...sample, text: "<script>alert(1)</script>" }, locale, onDismiss() {}, onFind() {} }));
   assert.ok(escaped.includes("&lt;script&gt;") && !escaped.includes("<script>"));
+  const announcement = ReactDOMServer.renderToStaticMarkup(React.createElement(InteractiveNotice,
+    { event: { ...sample, type: "CityAnnouncement", text: "<b>News</b>" }, locale,
+      onDismiss() {}, onFind() {}, onShown() {} }));
+  assert.ok(announcement.includes("cityAnnouncement") && announcement.includes("&lt;b&gt;News&lt;/b&gt;"));
+  assert.ok(announcement.includes(locale === "ru" ? "ГОРОДСКОЕ ОБЪЯВЛЕНИЕ" : "CITY ANNOUNCEMENT"));
   const panel = ReactDOMServer.renderToStaticMarkup(React.createElement(InteractivePanel,
     { locale, config: defaults, state: parseInteractiveState("{}"), status: "",
       pointsStatus: "Disconnected", pointsPermission: "AuthorizationRequired", onSave() {}, onTest() {} }));

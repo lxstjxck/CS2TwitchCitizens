@@ -19,6 +19,7 @@ namespace CS2TwitchCitizens.Mod
         [DataMember(Name = "broadcasterId")] public string BroadcasterId { get; set; } = "";
         [DataMember(Name = "redemptionId")] public string RedemptionId { get; set; } = "";
         [DataMember(Name = "action")] public string Action { get; set; } = "";
+        [DataMember(Name = "cost")] public long Cost { get; set; }
         [DataMember(Name = "edit")] public TwitchRewardEdit? Edit { get; set; }
         [DataMember(Name = "expected")] public TwitchRewardEdit? Expected { get; set; }
     }
@@ -33,7 +34,21 @@ namespace CS2TwitchCitizens.Mod
         [DataMember(Name = "selectedRewardId")] public string SelectedRewardId { get; set; } = "";
         [DataMember(Name = "busy")] public bool Busy { get; set; }
         [DataMember(Name = "status")] public string Status { get; set; } = "";
+        [DataMember(Name = "fresh")] public bool Fresh { get; set; }
+        [DataMember(Name = "fixedRewards")] public FixedRewardView[] FixedRewards { get; set; } = Array.Empty<FixedRewardView>();
+        [DataMember(Name = "legacyActive")] public string[] LegacyActive { get; set; } = Array.Empty<string>();
         public string ToJson() => JsonData.Write(this);
+    }
+
+    [DataContract]
+    public sealed class FixedRewardView
+    {
+        [DataMember(Name = "templateId")] public string TemplateId { get; set; } = "";
+        [DataMember(Name = "rewardId")] public string RewardId { get; set; } = "";
+        [DataMember(Name = "cost")] public long Cost { get; set; }
+        [DataMember(Name = "enabled")] public bool Enabled { get; set; }
+        [DataMember(Name = "status")] public string Status { get; set; } = "Missing";
+        [DataMember(Name = "iconUrl")] public string IconUrl { get; set; } = "";
     }
 
     [DataContract]
@@ -86,14 +101,14 @@ namespace CS2TwitchCitizens.Mod
                 command = JsonData.Read<RewardManagerCommand>(json);
             }
             catch { SetStatus("InvalidRequest"); return; }
-            if (command.Operation == "Bind" || command.Operation == "Unbind")
-            {
-                Bind(command); return;
-            }
+            if (command.Operation is "Bind" or "Unbind" or "Create" or "Update" or "Delete")
+            { SetStatus("FixedRewardsOnly"); return; }
             lock (_gate)
             {
                 if (_disposed || _state.Busy) return;
                 _state.Busy = true; _state.Status = "";
+                if (command.Operation is "Sync" or "FixedEnable" or "FixedDisable" or "FixedCost")
+                    _state.Fresh = false;
                 var cancellation = _stop.Token;
                 _activeWork = Task.Run(() => RunAsync(command, cancellation));
             }
@@ -190,6 +205,11 @@ namespace CS2TwitchCitizens.Mod
                 var all = await _api.ListAsync(client, token, broadcaster, false, cancellation).ConfigureAwait(false);
                 var owned = await _api.ListAsync(client, token, broadcaster, true, cancellation).ConfigureAwait(false);
                 var ids = new HashSet<string>(owned.Select(r => r.Id), StringComparer.Ordinal);
+                if (command.Operation is "FixedEnable" or "FixedDisable" or "FixedCost")
+                {
+                    await ChangeFixedAsync(command, access, all, owned, cancellation).ConfigureAwait(false);
+                    return;
+                }
                 if (command.Operation == "Create")
                 {
                     if (!string.IsNullOrEmpty(_pendingCreateTitle))
@@ -297,21 +317,127 @@ namespace CS2TwitchCitizens.Mod
             if (_connection.UserId != access.BroadcasterId) throw new InvalidDataException("AccountChanged");
             if (!string.IsNullOrEmpty(_pendingCreateTitle))
             {
-                var match = owned.FirstOrDefault(r => r.Id == _pendingCreatedId) ??
-                    owned.FirstOrDefault(r => r.Title == _pendingCreateTitle);
+                var template = FixedRewardCatalog.Find(_pendingCreateAction);
+                var candidates = template == null ? Array.Empty<TwitchReward>() : owned.Where(r =>
+                    r.Title == template.Title && r.Prompt == template.Prompt && r.IsUserInputRequired).ToArray();
+                var match = owned.FirstOrDefault(r => _pendingCreatedId.Length > 0 && r.Id == _pendingCreatedId) ??
+                    (candidates.Length == 1 ? candidates[0] : null);
                 if (match == null) throw new InvalidDataException("CreateOutcomeUnknownCheckTwitch");
-                try { SaveRule(match.Id, _pendingCreateAction); }
+                try
+                {
+                    if (template == null) SaveRule(match.Id, _pendingCreateAction);
+                    else SaveFixedRule(match.Id, _pendingCreateAction, true);
+                }
                 catch { throw new InvalidDataException("NeedsSync:" + match.Id); }
                 ClearPendingCreate();
             }
+            var settings = _registry.Current;
+            var legacy = settings.Rewards.Where(r => r.Enabled && FixedRewardCatalog.Find(r.Action) == null).ToArray();
+            if (legacy.Length > 0)
+            {
+                foreach (var rule in legacy) rule.Enabled = false;
+                _registry.Update(settings.ToJson());
+            }
+            var ownedIds = new HashSet<string>(owned.Select(r => r.Id), StringComparer.Ordinal);
+            var fixedViews = FixedRewardCatalog.All.Select(template =>
+            {
+                var links = settings.Rewards.Where(r => r.Action == template.Id).ToArray();
+                var link = links.Length == 1 ? links[0] : null;
+                var reward = link == null ? null : all.FirstOrDefault(r => r.Id == link.RewardId);
+                var conflict = links.Length > 1 || link != null && (reward == null || !ownedIds.Contains(link.RewardId)) ||
+                    link == null && all.Any(r => r.Title == template.Title);
+                return new FixedRewardView {
+                    TemplateId = template.Id, RewardId = reward?.Id ?? "",
+                    Cost = reward?.Cost ?? template.DefaultCost,
+                    Enabled = reward?.IsEnabled == true && link?.Enabled == true,
+                    Status = conflict ? "Conflict" : reward == null ? "Missing" :
+                        reward.IsEnabled && link?.Enabled == true ? "Synced" : "Disabled",
+                    IconUrl = TwitchRewardCatalog.SafeIcon(reward?.Image?.Url1x) ??
+                        TwitchRewardCatalog.SafeIcon(reward?.DefaultImage?.Url1x) ?? ""
+                };
+            }).ToArray();
             lock (_gate)
             {
                 _state.BroadcasterId = access.BroadcasterId;
+                _state.Fresh = true;
                 _state.Items = all;
                 _state.ManageableIds = owned.Select(r => r.Id).ToArray();
+                _state.FixedRewards = fixedViews;
+                _state.LegacyActive = settings.Rewards.Where(r => FixedRewardCatalog.Find(r.Action) == null &&
+                    all.Any(item => item.Id == r.RewardId && item.IsEnabled)).Select(r => r.RewardId).ToArray();
                 _state.Redemptions = Array.Empty<TwitchRedemption>();
                 _state.SelectedRewardId = "";
             }
+        }
+
+        private async Task ChangeFixedAsync(RewardManagerCommand command, TwitchRewardAuthorization access,
+            TwitchReward[] all, TwitchReward[] owned, CancellationToken cancellation)
+        {
+            var template = FixedRewardCatalog.Find(command.Action) ?? throw new InvalidDataException("InvalidTemplate");
+            if ((command.Operation == "FixedCost" || command.Operation == "FixedEnable" && command.Cost != 0) &&
+                command.Cost < 1)
+                throw new InvalidDataException("InvalidCost");
+            var settings = _registry.Current;
+            var links = settings.Rewards.Where(r => r.Action == template.Id).ToArray();
+            if (links.Length > 1) throw new InvalidDataException("RewardConflict");
+            var link = links.FirstOrDefault();
+            var reward = link == null ? null : owned.FirstOrDefault(r => r.Id == link.RewardId);
+            if (link != null && reward == null) throw new InvalidDataException("RewardConflict");
+            if (reward == null && all.Any(r => r.Title == template.Title))
+                throw new InvalidDataException("RewardConflict");
+            if (command.Operation != "FixedEnable" && reward == null)
+                throw new InvalidDataException("RewardMissing");
+            if (command.Operation == "FixedEnable" && reward == null)
+            {
+                if (_pendingCreateTitle.Length > 0) throw new InvalidDataException("CreateNeedsReconciliation");
+                if (all.Length >= 50) throw new InvalidDataException("RewardLimit");
+                _pendingCreateTitle = template.Title;
+                _pendingCreateAction = template.Id;
+                SavePendingCreate();
+                TwitchReward created;
+                try { created = await _api.CreateAsync(access.ClientId, access.AccessToken,
+                    access.BroadcasterId, template.CreateEdit(command.Cost > 0 ? command.Cost : template.DefaultCost),
+                    cancellation).ConfigureAwait(false); }
+                catch (TwitchRewardException ex) when (ex.StatusCode < 500)
+                { ClearPendingCreate(); throw; }
+                _pendingCreatedId = created.Id;
+                SavePendingCreate();
+                if (_connection.UserId != access.BroadcasterId) throw new InvalidDataException("AccountChanged");
+                SaveFixedRule(created.Id, template.Id, true);
+                ClearPendingCreate();
+            }
+            else if (reward != null)
+            {
+                var patch = command.Operation switch {
+                    "FixedCost" => new TwitchRewardPatch { Cost = command.Cost },
+                    "FixedEnable" => new TwitchRewardPatch { IsEnabled = true },
+                    _ => new TwitchRewardPatch { IsEnabled = false }
+                };
+                var updated = await _api.PatchAsync(access.ClientId, access.AccessToken,
+                    access.BroadcasterId, reward.Id, patch, cancellation).ConfigureAwait(false);
+                if (updated.Id != reward.Id || patch.Cost.HasValue && updated.Cost != patch.Cost.Value ||
+                    patch.IsEnabled.HasValue && updated.IsEnabled != patch.IsEnabled.Value)
+                    throw new InvalidDataException("ServerChangedSyncRequired");
+                if (_connection.UserId != access.BroadcasterId) throw new InvalidDataException("AccountChanged");
+                if (command.Operation != "FixedCost")
+                    SaveFixedRule(reward.Id, template.Id, command.Operation == "FixedEnable");
+            }
+            await SyncAsync(access, cancellation).ConfigureAwait(false);
+            SetStatus(command.Operation == "FixedCost" ? "Updated" :
+                command.Operation == "FixedEnable" ? "Enabled" : "Disabled");
+        }
+
+        private void SaveFixedRule(string rewardId, string action, bool enabled)
+        {
+            var template = FixedRewardCatalog.Find(action) ?? throw new InvalidDataException("InvalidTemplate");
+            var settings = _registry.Current;
+            var existing = settings.Rewards.FirstOrDefault(r => r.RewardId == rewardId);
+            if (existing == null) settings.Rewards.Add(new RewardRule { RewardId = rewardId,
+                Action = action, Enabled = enabled, DisplaySeconds = template.DisplaySeconds });
+            else { existing.Action = action; existing.Enabled = enabled;
+                existing.DisplaySeconds = template.DisplaySeconds; }
+            if (enabled) settings.Enabled = true;
+            _registry.Update(settings.ToJson());
         }
 
         private void SaveRule(string rewardId, string action)

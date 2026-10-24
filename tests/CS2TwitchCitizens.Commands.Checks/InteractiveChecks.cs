@@ -87,7 +87,7 @@ internal static class InteractiveChecks
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out _) == "EmptyMessage");
             Check(InteractivePolicy.Check(registry.Current,
                 new RewardRule { RewardId = "reward-1", Action = InteractiveAction.CityCelebration },
-                redemption, null, now, out _) == "Ready");
+                redemption, null, now, out _) == "LegacyRewardUnavailable");
             redemption.UserInput = new string('x', 500);
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out text) == "Ready" &&
                 text.Length == 180);

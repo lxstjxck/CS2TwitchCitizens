@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.2 — Fixed rewards and message layout (live verification pending)
+
+- Replaced the generic reward editor with fixed ShowMessage and CityAnnouncement cards. Twitch titles, prompts, actions, and default prices are defined by the mod; the UI exposes only price and enabled state.
+- Added targeted Helix PATCH updates for cost and availability. Creation retains the persisted uncertain POST guard. Previous rewards are matched by saved Reward ID and action; conflicts require manual review.
+- Disabled older action rules in the mod without deleting Twitch rewards or redemption history. Added a warning for older rewards that remain active in Twitch.
+- Separated compact upper-right messages from centered city announcements, with eight and 30 second display limits, manual close, one shared presentation queue, and UI acknowledgement before fulfillment.
+- Kept recent event details in memory, including author ID, text, receipt time, and status. Live Twitch and in-game layout checks remain pending.
+- C# checks, UI checks, TypeScript typecheck, and the official Code Mod build passed. ModPostProcessor, Burst, DeployWIP, and UI installation completed. The existing Sass legacy API warning remains.
+
 ## 0.9.1 — Twitch reward manager (live verification pending)
 
 - Added Helix reward CRUD and redemption list/status operations with broadcaster identity checks, app ownership via `only_manageable_rewards`, scope separation, validated fields, bounded read retries, and no blind create retry. An uncertain create is persisted by broadcaster and reconciled on sync before another create.
