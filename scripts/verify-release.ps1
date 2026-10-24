@@ -69,12 +69,23 @@ try {
     if ([string]::IsNullOrWhiteSpace($config.Publish.GameVersion.Value)) { $errors.Add('GameVersion is missing.') }
     if ($config.Publish.Thumbnail.Value -ne 'Properties/Thumbnail.png') { $errors.Add('Thumbnail path does not match package layout.') }
     $playerLog = Join-Path $env:CSII_USERDATAPATH 'Player.log'
-    if (Test-Path -LiteralPath $playerLog -PathType Leaf) {
-        $gameLine = Select-String -LiteralPath $playerLog -Pattern '^Game version:\s*(\S+)' | Select-Object -First 1
-        if ($gameLine -and $config.Publish.GameVersion.Value -ne $gameLine.Matches[0].Groups[1].Value) {
-            $errors.Add('GameVersion differs from the most recent local Player.log.')
+
+if (Test-Path -LiteralPath $playerLog -PathType Leaf) {
+    $gameLine = Select-String -LiteralPath $playerLog `
+        -Pattern '^Game version:\s*(\S+)' |
+        Select-Object -First 1
+
+    if ($gameLine) {
+        $actualVersion = $gameLine.Matches[0].Groups[1].Value
+        $declaredVersion = [string]$config.Publish.GameVersion.Value
+
+        if ($actualVersion -notlike $declaredVersion) {
+            $errors.Add(
+                "GameVersion '$declaredVersion' does not match Player.log version '$actualVersion'."
+            )
         }
     }
+}
 }
 catch { $errors.Add("PublishConfiguration.xml is invalid: $_") }
 
