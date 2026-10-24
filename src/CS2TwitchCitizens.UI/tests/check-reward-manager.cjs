@@ -23,7 +23,7 @@ assert.deepEqual(parseRewardSnapshot('{"fixedRewards":null}').fixedRewards, []);
 const snapshot = parseRewardSnapshot(JSON.stringify({ broadcasterId: "42", items: [],
   fixedRewards: [{ templateId: "ShowMessage", rewardId: "r1", cost: 750, enabled: true, status: "Synced" },
     { templateId: "CityAnnouncement", rewardId: "", cost: 1000, enabled: false, status: "Missing" }],
-  legacyActive: ["old-reward"], redemptions: [], busy: false, status: "" }));
+  legacyActive: ["old-reward"], redemptions: [], busy: false, status: "", fresh: true }));
 for (const locale of ["ru", "en"]) {
   const html = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
     locale, snapshot, permission: "Allowed", onCommand() {}, onReauthorize() {} }));
@@ -32,5 +32,16 @@ for (const locale of ["ru", "en"]) {
   assert.ok(html.includes("750") && html.includes("1000") && html.includes("old-reward"));
   assert.ok(!html.includes("Delete reward") && !html.includes("Color HEX") && !html.includes("Reward ID"));
   assert.ok(!html.includes("access_token") && !html.includes("Bearer"));
+  assert.ok(html.includes(locale === "ru" ? "Создать награду" : "Create reward"));
+  assert.ok(!html.includes(locale === "ru" ? "Синхронизировать с Twitch" : "Sync with Twitch"));
+  assert.ok(!html.includes(locale === "ru" ? "Сохранить стоимость" : "Save cost"));
+  const disabled = { ...snapshot, fixedRewards: snapshot.fixedRewards.map(r => r.templateId === "ShowMessage"
+    ? { ...r, enabled: false, status: "Disabled" } : r) };
+  const disabledHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
+    locale, snapshot: disabled, permission: "Allowed", onCommand() {}, onReauthorize() {} }));
+  assert.ok(disabledHtml.includes(locale === "ru" ? "Включить награду" : "Enable reward"));
+  const missingPermissions = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
+    locale, snapshot, permission: "AuthorizationRequired", onCommand() {}, onReauthorize() {} }));
+  assert.ok(missingPermissions.includes(locale === "ru" ? "Обновить разрешения Twitch" : "Update Twitch permissions"));
 }
 console.log("PASS: fixed reward cards, prices, migration warning, and no generic editor");

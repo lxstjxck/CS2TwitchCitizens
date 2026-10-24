@@ -56,6 +56,21 @@ internal static class RewardManagerChecks
             new TwitchRewardEdit { Title = "", Cost = 0 }, CancellationToken.None));
         await Expect<ArgumentException>(() => failedApi.SetRedemptionStatusAsync("client", "token", "42",
             "reward", "redemption", "UNFULFILLED", CancellationToken.None));
+        foreach (var status in new[] { HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden,
+            (HttpStatusCode)429, HttpStatusCode.InternalServerError })
+        {
+            var rejected = new Handler { FailureStatus = status };
+            using var rejectedApi = new TwitchRewardManager(new HttpClient(rejected));
+            try { await rejectedApi.ListAsync("client", "token", "42", false, CancellationToken.None);
+                throw new Exception("Expected Twitch reward HTTP error."); }
+            catch (TwitchRewardException ex) { Check(ex.StatusCode == (int)status); }
+            Check(rejected.Requests.Count == ((int)status == 429 || (int)status >= 500 ? 2 : 1));
+        }
+        var timedOut = new Handler { Timeout = true };
+        using var timedOutApi = new TwitchRewardManager(new HttpClient(timedOut));
+        await Expect<TaskCanceledException>(() => timedOutApi.ListAsync("client", "token", "42", false,
+            CancellationToken.None));
+        Check(timedOut.Requests.Count == 1);
         Console.WriteLine("PASS: Helix reward CRUD, permissions headers, request fields, redemptions, no POST retry");
     }
     private static void Check(bool value) { if (!value) throw new Exception("Reward manager check failed."); }
@@ -72,11 +87,15 @@ internal static class RewardManagerChecks
         public bool FailCreate;
         public bool RateLimitOnce;
         public bool PagedRedemptions;
+        public HttpStatusCode? FailureStatus;
+        public bool Timeout;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content == null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             Requests.Add(new Request(request.Method, request.RequestUri!, body,
                 request.Headers.GetValues("Client-Id").Single(), request.Headers.Authorization!.ToString()));
+            if (Timeout) throw new TaskCanceledException();
+            if (FailureStatus.HasValue) return new HttpResponseMessage(FailureStatus.Value);
             if (FailCreate) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
             if (RateLimitOnce && Requests.Count == 1)
             {

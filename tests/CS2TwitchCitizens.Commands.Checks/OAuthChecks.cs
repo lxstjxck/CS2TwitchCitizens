@@ -26,7 +26,12 @@ internal static class OAuthChecks
         using (var noRead = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:write:chat"))))
             await Expect<UnauthorizedAccessException>(() => noRead.ValidateAsync("public-client", "write-only", CancellationToken.None, false));
         using (var noPoints = new TwitchOAuthClient(new HttpClient(new ScopeHandler("user:read:chat\",\"user:write:chat"))))
+        {
+            var chatOnly = await noPoints.ValidateAsync("public-client", "chat-only", CancellationToken.None, false);
+            Check(chatOnly.Scopes.Contains("user:write:chat") &&
+                !chatOnly.Scopes.Contains("channel:manage:redemptions"));
             await Expect<UnauthorizedAccessException>(() => noPoints.ValidateAsync("public-client", "chat-only", CancellationToken.None));
+        }
         Check(await oauth.GetDisplayNameAsync("public-client", token.AccessToken, CancellationToken.None) == "Streamer");
         var refreshed = await oauth.RefreshAsync("public-client", token.RefreshToken, CancellationToken.None);
         Check(refreshed.AccessToken == "access-2" && refreshed.RefreshToken == "refresh-2");

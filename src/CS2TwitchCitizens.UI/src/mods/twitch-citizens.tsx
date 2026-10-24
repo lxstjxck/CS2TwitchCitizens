@@ -232,6 +232,7 @@ export const TwitchCitizensPanel = () => {
           status={interactiveSettingsStatus} pointsStatus={auth.channelPointsStatus}
           pointsPermission={auth.channelPointsPermission}
           rewardSnapshot={rewardSnapshot} rewardManagePermission={auth.rewardManagePermission}
+          connectionState={auth.state} reauthorizationState={auth.reauthorizationState}
           onRewardCommand={command => rewardCommand(JSON.stringify(command))}
           onReauthorize={() => reauthorizeTwitch("")}
           onSave={next => updateInteractiveSettings(JSON.stringify(next))} onTest={testInteractive} />

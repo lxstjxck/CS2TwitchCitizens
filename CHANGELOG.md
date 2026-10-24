@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.3 — Channel Points setup and reward card redesign (live verification pending)
+
+- Renamed the Interactive reward tab to Channel Points in English and Russian and simplified the setup guidance.
+- Kept a single Twitch Device Code authorization flow for chat and Channel Points. The granted scopes are validated after consent; missing reward permissions have one clear renewal action while failed renewal preserves existing credentials.
+- Added background reward GET after connection and a five-minute refresh interval. Empty reward lists are a valid state; reward creation remains an explicit action.
+- Reduced each fixed reward card to its current state, point cost, and applicable action. A missing reward can be created directly; an enabled reward shows a save action only after its cost changes. Enabling a disabled reward can update its cost in the same PATCH.
+- Moved pending redemptions into a collapsible section while retaining fulfillment and refund controls. Uncertain create outcomes still require reconciliation and are never retried with another POST.
+
 ## Unreleased — Paradox Mods preparation for 0.9.2
 
 - Added an official Release build and isolated staging package for the Code Mod, UI and Burst output. Development `build-official.ps1` remains available.

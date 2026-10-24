@@ -83,10 +83,11 @@ export function InteractiveNotice({ event, locale, onDismiss, onFind, onShown }:
 }
 
 export function InteractivePanel({ locale, state, config, status, pointsStatus, pointsPermission,
-  rewardSnapshot, rewardManagePermission, onRewardCommand, onReauthorize,
+  rewardSnapshot, rewardManagePermission, connectionState, reauthorizationState, onRewardCommand, onReauthorize,
   onSave, onTest }: { locale: Locale; state: InteractiveState; config: InteractiveSettings; status: string;
   pointsStatus: string; pointsPermission: string; onSave: (value: InteractiveSettings) => void;
   onTest: (action: string) => void; rewardSnapshot: RewardSnapshot; rewardManagePermission: string;
+  connectionState?: string; reauthorizationState?: string;
   onRewardCommand: (command: object) => void; onReauthorize: () => void }) {
   const [section, setSection] = useState<"messages" | "rewards" | "events" | "queue" | "settings">("messages");
   const update = (change: Partial<InteractiveSettings>) => onSave({ ...config, ...change });
@@ -95,7 +96,7 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
       {(["messages", "rewards", "events", "queue", "settings"] as const).map(name =>
         <Button key={name} variant="default" className={styles.control} selected={section === name}
           data-selected={section === name} onSelect={() => setSection(name)}>
-          {({ messages: label(locale, "Messages", "Сообщения"), rewards: label(locale, "Twitch rewards", "Награды Twitch"),
+          {({ messages: label(locale, "Messages", "Сообщения"), rewards: label(locale, "Channel Points", "Баллы канала"),
             events: label(locale, "Events", "События"), queue: label(locale, "Queue", "Очередь"),
             settings: label(locale, "Settings", "Настройки") })[name]}</Button>)}
     </div>
@@ -118,13 +119,14 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
       <Button variant="default" className={styles.control} disabled data-disabled="true">
         {label(locale, "Unavailable", "Недоступно")}</Button></div>
     <p className={styles.helper}>{label(locale,
-      "Create and sync rewards in the Rewards tab. Redemption confirmation is manual until live testing is complete.",
-      "Создавайте и синхронизируйте награды во вкладке «Награды». Подтверждение погашений остаётся ручным до проверки в игре.")}</p>
+      "Create rewards in Channel Points. Redemption confirmation is manual until live testing is complete.",
+      "Создавайте награды во вкладке «Баллы канала». Подтверждение погашений остаётся ручным до проверки в игре.")}</p>
     {status && <p className={styles.authError}>{status}</p>}
     {state.ledgerError && <p className={styles.authError}>{label(locale, "Redemption history could not be read; rewards are blocked.",
       "Не удалось прочитать историю наград; выполнение заблокировано.")}</p>}
     </>}
     {section === "rewards" && <RewardManagerPanel locale={locale} snapshot={rewardSnapshot}
+      connectionState={connectionState} reauthorizationState={reauthorizationState}
       rules={config.rewards} permission={rewardManagePermission} onCommand={onRewardCommand}
       onReauthorize={onReauthorize} onRuleChange={(id, patch) => onSave({ ...config,
         rewards: config.rewards.map(rule => rule.rewardId === id ? { ...rule, ...patch } : rule) })} />}

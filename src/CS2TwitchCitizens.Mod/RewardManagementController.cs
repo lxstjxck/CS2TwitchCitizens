@@ -80,6 +80,8 @@ namespace CS2TwitchCitizens.Mod
         private string _pendingCreateAction = "";
         private string _pendingCreatedId = "";
         private string _pendingBroadcasterId = "";
+        private DateTimeOffset _lastSync = DateTimeOffset.MinValue;
+        private DateTimeOffset _nextAutomaticSync = DateTimeOffset.MinValue;
 
         public RewardManagementController(TwitchConnectionController connection, RewardActionRegistry registry,
             RedemptionLedger ledger, string recoveryDirectory, TwitchRewardManager? api = null)
@@ -90,6 +92,24 @@ namespace CS2TwitchCitizens.Mod
         {
             get { lock (_gate) return _state.BroadcasterId == _connection.UserId ? _state.ToJson()
                 : new RewardManagerSnapshot().ToJson(); }
+        }
+
+        /// <summary>Called by the UI system once per second; all Helix work stays off the simulation thread.</summary>
+        public void PollAutomaticSync()
+        {
+            var access = _connection.RewardAuthorization;
+            if (access == null) return;
+            lock (_gate)
+            {
+                if (_disposed || _state.Busy || DateTimeOffset.UtcNow < _nextAutomaticSync) return;
+                if (_state.Fresh && _state.BroadcasterId == access.BroadcasterId &&
+                    DateTimeOffset.UtcNow - _lastSync < TimeSpan.FromMinutes(5)) return;
+                _nextAutomaticSync = DateTimeOffset.UtcNow.AddMinutes(1);
+                _state.Busy = true;
+                _state.Fresh = false;
+                _state.Status = "Checking";
+                _activeWork = Task.Run(() => RunAsync(new RewardManagerCommand { Operation = "Sync" }, _stop.Token));
+            }
         }
 
         public void Submit(string json)
@@ -360,6 +380,8 @@ namespace CS2TwitchCitizens.Mod
             {
                 _state.BroadcasterId = access.BroadcasterId;
                 _state.Fresh = true;
+                _lastSync = DateTimeOffset.UtcNow;
+                _nextAutomaticSync = _lastSync.AddMinutes(5);
                 _state.Items = all;
                 _state.ManageableIds = owned.Select(r => r.Id).ToArray();
                 _state.FixedRewards = fixedViews;
@@ -410,7 +432,8 @@ namespace CS2TwitchCitizens.Mod
             {
                 var patch = command.Operation switch {
                     "FixedCost" => new TwitchRewardPatch { Cost = command.Cost },
-                    "FixedEnable" => new TwitchRewardPatch { IsEnabled = true },
+                    "FixedEnable" => new TwitchRewardPatch { IsEnabled = true,
+                        Cost = command.Cost > 0 && command.Cost != reward.Cost ? command.Cost : null },
                     _ => new TwitchRewardPatch { IsEnabled = false }
                 };
                 var updated = await _api.PatchAsync(access.ClientId, access.AccessToken,

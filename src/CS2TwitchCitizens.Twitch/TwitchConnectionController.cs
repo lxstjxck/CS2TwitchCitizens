@@ -236,7 +236,7 @@ public sealed class TwitchConnectionController : IDisposable
                     if (token == null) continue;
                     lock (_gate) { if (cancellation.IsCancellationRequested || generation != _generation) return;
                         if (!reauthorize) _view.WritePermission = "Checking"; }
-                    var identity = await _oauth.ValidateAsync(_clientId, token.AccessToken, cancellation).ConfigureAwait(false);
+                    var identity = await _oauth.ValidateAsync(_clientId, token.AccessToken, cancellation, false).ConfigureAwait(false);
                     var credentials = MakeCredentials(token, identity);
                     credentials.DisplayName = await _oauth.GetDisplayNameAsync(_clientId, token.AccessToken, cancellation).ConfigureAwait(false);
                     await _refreshGate.WaitAsync(cancellation).ConfigureAwait(false);
@@ -247,7 +247,11 @@ public sealed class TwitchConnectionController : IDisposable
                             throw new UnauthorizedAccessException("Twitch identity changed.");
                         _store.Save(credentials);
                         _view.ModernCredentials = true;
-                        Activate(credentials, "Allowed", "Allowed", "Allowed");
+                        Activate(credentials,
+                            identity.Scopes.Contains("user:write:chat") ? "Allowed" : "AuthorizationRequired",
+                            identity.Scopes.Contains("channel:read:redemptions") ||
+                                identity.Scopes.Contains("channel:manage:redemptions") ? "Allowed" : "AuthorizationRequired",
+                            identity.Scopes.Contains("channel:manage:redemptions") ? "Allowed" : "AuthorizationRequired");
                     } }
                     finally { _refreshGate.Release(); }
                     return;

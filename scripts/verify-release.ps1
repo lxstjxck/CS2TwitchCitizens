@@ -53,7 +53,7 @@ foreach ($name in @('CS2TwitchCitizens.Mod.dll', 'CS2TwitchCitizens.Commands.dll
 }
 
 try {
-    if ($version -ne '0.9.2') { Write-Warning "Verifying a later release: $version. Confirm compatibility with the installed game." }
+    if ($version -ne '0.9.3') { Write-Warning "Verifying a later release: $version. Confirm compatibility with the installed game." }
     [xml]$codeProject = Get-Content -LiteralPath (Join-Path $root 'src\CS2TwitchCitizens.Mod\CS2TwitchCitizens.Mod.csproj') -Raw -Encoding UTF8
     [xml]$commandsProject = Get-Content -LiteralPath (Join-Path $root 'src\CS2TwitchCitizens.Commands\CS2TwitchCitizens.Commands.csproj') -Raw -Encoding UTF8
     [xml]$twitchProject = Get-Content -LiteralPath (Join-Path $root 'src\CS2TwitchCitizens.Twitch\CS2TwitchCitizens.Twitch.csproj') -Raw -Encoding UTF8

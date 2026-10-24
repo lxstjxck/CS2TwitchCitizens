@@ -87,6 +87,7 @@ namespace CS2TwitchCitizens.Mod
             var bindingSystem = gameLoaded ? World.GetExistingSystemManaged<CitizenBindingSystem>() : null;
             var viewers = bindingSystem?.GetAllBindings() ?? Array.Empty<ViewerCitizenInfo>();
             var auth = Mod.Connection?.View ?? new CS2TwitchCitizens.Twitch.TwitchAuthView();
+            Mod.Rewards?.PollAutomaticSync();
             var snapshot = ViewerPanelSnapshot.Create(auth.EventSubStatus,
                 Mod.Connection?.UserId ?? string.Empty, gameLoaded, viewers);
             _snapshot.Update(snapshot.ToJson());
