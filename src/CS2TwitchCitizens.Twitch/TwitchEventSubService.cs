@@ -120,7 +120,8 @@ public sealed class TwitchEventSubService : IDisposable
                         _log("[CS2TwitchCitizens] Twitch token client ID, user ID, or user:read:chat scope mismatch");
                         throw new AuthenticationException("Twitch token does not match config.");
                     }
-                    _hasRedemptionScope = data.Scopes.Contains("channel:read:redemptions");
+                    _hasRedemptionScope = data.Scopes.Contains("channel:read:redemptions") ||
+                        data.Scopes.Contains("channel:manage:redemptions");
                     if (!_hasRedemptionScope) _redemptionStatus = "AuthorizationRequired";
                 }
             }

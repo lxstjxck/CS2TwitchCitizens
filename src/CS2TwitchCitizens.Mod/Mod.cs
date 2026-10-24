@@ -17,6 +17,7 @@ namespace CS2TwitchCitizens.Mod
         internal static RedemptionQueue? Redemptions { get; private set; }
         internal static RewardActionRegistry? InteractiveSettings { get; private set; }
         internal static RedemptionLedger? RedemptionLedger { get; private set; }
+        internal static RewardManagementController? Rewards { get; private set; }
         internal static bool TwitchEnabled => Connection != null;
 
         public void OnLoad(UpdateSystem updateSystem)
@@ -44,11 +45,15 @@ namespace CS2TwitchCitizens.Mod
             Connection = new TwitchConnectionController(clientId,
                 new TwitchCredentialStore(Path.Combine(directory, "twitch.credentials.dpapi")),
                 new TwitchOAuthClient(), CommandQueue, message => Log.Info(message), legacy, CommandSettings, Redemptions);
+            Rewards = new RewardManagementController(Connection, InteractiveSettings, RedemptionLedger,
+                Path.Combine(directory, "reward-create"));
             Connection.Start();
         }
 
         public void OnDispose()
         {
+            Rewards?.Dispose();
+            Rewards = null;
             Connection?.Dispose();
             Connection = null;
             CommandSettings = null;

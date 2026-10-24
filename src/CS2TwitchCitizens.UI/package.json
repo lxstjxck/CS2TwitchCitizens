@@ -6,7 +6,7 @@
   },
   "scripts": {
     "build": "webpack",
-    "test": "node tests/check-ui.cjs && node tests/check-command-ui.cjs && node tests/check-interactive-ui.cjs",
+    "test": "node tests/check-ui.cjs && node tests/check-command-ui.cjs && node tests/check-interactive-ui.cjs && node tests/check-reward-manager.cjs",
     "dev": "webpack --watch",
     "update": "npx create-csii-ui-mod update",
     "clean": "npx create-csii-ui-mod clean"

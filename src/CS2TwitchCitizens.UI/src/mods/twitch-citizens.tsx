@@ -8,6 +8,7 @@ import { ageDetailText, connectionText, dateText, detectLocale, focusText, lifeC
 import { defaultCommands, parseCommandConfig } from "./command-config";
 import { CommandEditor } from "./command-editor";
 import { InteractiveNotice, InteractivePanel, parseInteractiveState, parseInteractiveSettings } from "./interactive-panel";
+import { parseRewardSnapshot } from "./reward-manager";
 export { CommandEditor } from "./command-editor";
 
 type Viewer = {
@@ -42,7 +43,7 @@ type FocusFeedback = { viewerId: string; result: string; sequence: number };
 type Auth = { state: string; login: string; displayName: string; userCode: string; verificationUri: string;
   expiresAt: number; error: string; eventSubStatus: string; legacyConfig: boolean; modernCredentials: boolean;
   writePermission: "Allowed" | "AuthorizationRequired" | "Checking"; reauthorizationState: string;
-  channelPointsPermission: string; channelPointsStatus: string };
+  channelPointsPermission: string; channelPointsStatus: string; rewardManagePermission: string };
 const group = "cs2twitchcitizens";
 const snapshotBinding = bindValue<string>(group, "snapshot", "{}");
 const focusResultBinding = bindValue<string>(group, "focusResult", "");
@@ -52,6 +53,9 @@ const commandsStatusBinding = bindValue<string>(group, "commandSettingsStatus", 
 const interactiveBinding = bindValue<string>(group, "interactive", "{}");
 const interactiveSettingsBinding = bindValue<string>(group, "interactiveSettings", "{}");
 const interactiveSettingsStatusBinding = bindValue<string>(group, "interactiveSettingsStatus", "");
+const rewardManagerBinding = bindValue<string>(group, "rewardManager", "{}");
+const rewardCommand = bindTriggerWithArgs<[string]>(group, "rewardCommand");
+const ackInteractive = bindTriggerWithArgs<[string]>(group, "ackInteractive");
 const updateInteractiveSettings = bindTriggerWithArgs<[string]>(group, "updateInteractiveSettings");
 const testInteractive = bindTriggerWithArgs<[string]>(group, "testInteractive");
 const dismissInteractive = bindTriggerWithArgs<[string]>(group, "dismissInteractive");
@@ -100,11 +104,13 @@ function parseAuth(value: string): Auth {
         ? data.writePermission : "AuthorizationRequired",
       reauthorizationState: data.reauthorizationState || "Idle",
       channelPointsPermission: data.channelPointsPermission || "AuthorizationRequired",
+      rewardManagePermission: data.rewardManagePermission || "AuthorizationRequired",
       channelPointsStatus: data.channelPointsStatus || "Disconnected" };
   } catch { return { state: "Disconnected", login: "", displayName: "", userCode: "", verificationUri: "",
     expiresAt: 0, error: "", eventSubStatus: "Disabled", legacyConfig: false, modernCredentials: false,
     writePermission: "AuthorizationRequired", reauthorizationState: "Idle",
-    channelPointsPermission: "AuthorizationRequired", channelPointsStatus: "Disconnected" }; }
+    channelPointsPermission: "AuthorizationRequired", channelPointsStatus: "Disconnected",
+    rewardManagePermission: "AuthorizationRequired" }; }
 }
 
 function displayName(viewer: Viewer, locale: Locale): string {
@@ -138,7 +144,8 @@ export const TwitchCitizensButton = () => {
       {text(locale, "open")} {snapshot.viewers.length > 0 ? `(${snapshot.viewers.length})` : ""}
     </Button>
     <InteractiveNotice event={interactive.active} locale={locale}
-      onDismiss={() => dismissInteractive("")} onFind={id => focusCitizen(id)} />
+      onDismiss={() => dismissInteractive("")} onFind={id => focusCitizen(id)}
+      onShown={id => ackInteractive(id)} />
   </div>;
 };
 
@@ -165,6 +172,8 @@ export const TwitchCitizensPanel = () => {
   const interactiveJson = useValue(interactiveBinding);
   const interactiveSettingsJson = useValue(interactiveSettingsBinding);
   const interactiveSettingsStatus = useValue(interactiveSettingsStatusBinding);
+  const rewardManagerJson = useValue(rewardManagerBinding);
+  const rewardSnapshot = useMemo(() => parseRewardSnapshot(rewardManagerJson), [rewardManagerJson]);
   const interactive = useMemo(() => parseInteractiveState(interactiveJson), [interactiveJson]);
   const interactiveConfig = useMemo(() => parseInteractiveSettings(interactiveSettingsJson), [interactiveSettingsJson]);
   const feedback = useMemo(() => parseFeedback(feedbackJson), [feedbackJson]);
@@ -222,6 +231,9 @@ export const TwitchCitizensPanel = () => {
         {tab === "interactive" ? <InteractivePanel locale={locale} state={interactive} config={interactiveConfig}
           status={interactiveSettingsStatus} pointsStatus={auth.channelPointsStatus}
           pointsPermission={auth.channelPointsPermission}
+          rewardSnapshot={rewardSnapshot} rewardManagePermission={auth.rewardManagePermission}
+          onRewardCommand={command => rewardCommand(JSON.stringify(command))}
+          onReauthorize={() => reauthorizeTwitch("")}
           onSave={next => updateInteractiveSettings(JSON.stringify(next))} onTest={testInteractive} />
         : tab === "commands" ? <CommandTabBoundary locale={locale}>
           <CommandEditor config={commandState.config} recovered={commandState.recovered || commandsStatus === "Recovered"}
@@ -233,7 +245,10 @@ export const TwitchCitizensPanel = () => {
           <div className={styles.settingsRow}><span>{text(locale, "sendPermission")}</span><strong>{text(locale,
             auth.writePermission === "Allowed" ? "permissionAllowed" : auth.writePermission === "Checking"
               ? "permissionChecking" : "permissionRequired")}</strong></div>
-          {(auth.writePermission === "AuthorizationRequired" || auth.channelPointsPermission === "AuthorizationRequired") &&
+          <div className={styles.settingsRow}><span>{locale === "ru" ? "Управление наградами" : "Reward management"}</span>
+            <strong>{text(locale, auth.rewardManagePermission === "Allowed" ? "permissionAllowed" : "permissionRequired")}</strong></div>
+          {(auth.writePermission === "AuthorizationRequired" || auth.channelPointsPermission === "AuthorizationRequired" ||
+            auth.rewardManagePermission === "AuthorizationRequired") &&
             auth.state === "Connected" &&
             auth.reauthorizationState === "Idle" && <Button variant="default" className={`${styles.control} ${styles.authButton}`}
               onSelect={() => reauthorizeTwitch("")}>{text(locale, "updateTwitchPermissions")}</Button>}

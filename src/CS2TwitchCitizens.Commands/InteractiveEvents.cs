@@ -70,7 +70,8 @@ public static class InteractivePolicy
         if (rule == null || !rule.Enabled) return "UnknownOrDisabledReward";
         if (rule.Action == InteractiveAction.GameDisaster) return "DisasterUnavailable";
         if (redemption.Status != "unfulfilled" && redemption.Status != "fulfilled") return "CanceledOrCompleted";
-        if (text.Length == 0) return "EmptyMessage";
+        if (text.Length == 0 && rule.Action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement)
+            return "EmptyMessage";
         if (lastShown.HasValue && now - lastShown.Value < TimeSpan.FromSeconds(rule.CooldownSeconds)) return "Cooldown";
         return "Ready";
     }
@@ -96,6 +97,7 @@ public sealed class RewardRule
     [DataMember(Name = "maxTextLength")] public int MaxTextLength { get; set; } = 180;
     [DataMember(Name = "cooldownSeconds")] public int CooldownSeconds { get; set; } = 15;
     [DataMember(Name = "displaySeconds")] public int DisplaySeconds { get; set; } = 8;
+    [DataMember(Name = "autoFulfill")] public bool AutoFulfill { get; set; }
 }
 
 [DataContract]
@@ -110,12 +112,13 @@ public sealed class InteractiveSettings
     public static InteractiveSettings FromJson(string json) => JsonData.Read<InteractiveSettings>(json);
     public void Validate()
     {
-        if (Version != 1 || Rewards == null || Rewards.Count > 32) throw new InvalidDataException("Invalid interactive settings.");
+        if (Version != 1 || Rewards == null || Rewards.Count > 50) throw new InvalidDataException("Invalid interactive settings.");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var rule in Rewards)
         {
             if (rule == null || rule.RewardId.Length > 128 || string.IsNullOrWhiteSpace(rule.RewardId) ||
                 !ids.Add(rule.RewardId) || !InteractiveAction.IsSupported(rule.Action) ||
+                (rule.AutoFulfill && rule.Action == InteractiveAction.GameDisaster) ||
                 rule.MaxTextLength is < 1 or > 300 || rule.CooldownSeconds is < 0 or > 3600 ||
                 rule.DisplaySeconds is < 2 or > 60)
                 throw new InvalidDataException("Invalid reward rule.");
@@ -194,28 +197,43 @@ public static class JsonData
 
 public sealed class RedemptionLedger
 {
-    private readonly string _path;
+    public const string Received = "Received";
+    public const string Reserved = "Reserved";
+    public const string AwaitingExecution = "AwaitingExecution";
+    public const string ExecutedInGame = "ExecutedInGame";
+    public const string AwaitingTwitchConfirmation = "AwaitingTwitchConfirmation";
+    public const string ManualReview = "ManualReview";
+    private readonly string _directory;
     private readonly object _gate = new();
     private readonly Dictionary<string, string> _states;
     public bool LoadFailed { get; }
     public RedemptionLedger(string path)
     {
-        _path = path;
-        try { _states = File.Exists(path)
-            ? JsonData.Read<Dictionary<string, string>>(File.ReadAllText(path))
-            : new(); }
+        _directory = Path.Combine(Path.GetDirectoryName(path)!, "redemptions");
+        try
+        {
+            _states = File.Exists(path)
+                ? JsonData.Read<Dictionary<string, string>>(File.ReadAllText(path)) : new();
+            if (Directory.Exists(_directory))
+                foreach (var file in Directory.GetFiles(_directory, "*.json"))
+                {
+                    var broadcasterId = Path.GetFileNameWithoutExtension(file);
+                    if (!SafeBroadcasterId(broadcasterId)) throw new InvalidDataException("Invalid redemption journal name.");
+                    var entries = JsonData.Read<Dictionary<string, string>>(File.ReadAllText(file));
+                    foreach (var entry in entries) _states[broadcasterId + ":" + entry.Key] = entry.Value;
+                }
+        }
         catch { _states = new(); LoadFailed = true; }
     }
     public bool TryReserve(string broadcasterId, string redemptionId)
     {
-        if (LoadFailed || string.IsNullOrWhiteSpace(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return false;
+        if (LoadFailed || !SafeBroadcasterId(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return false;
         lock (_gate)
         {
             var key = broadcasterId + ":" + redemptionId;
             if (_states.ContainsKey(key)) return false;
-            _states.Add(key, "Received");
-            try { AtomicJson.Write(_path, _states); }
-            catch { _states.Remove(key); throw; }
+            _states.Add(key, Received);
+            WriteBroadcaster(broadcasterId);
             return true;
         }
     }
@@ -226,22 +244,31 @@ public sealed class RedemptionLedger
             var key = broadcasterId + ":" + redemptionId;
             if (!_states.ContainsKey(key)) return;
             _states[key] = result;
-            AtomicJson.Write(_path, _states);
+            WriteBroadcaster(broadcasterId);
         }
     }
     public void MarkExternalStatus(string broadcasterId, string redemptionId, string status)
     {
-        if (LoadFailed || string.IsNullOrWhiteSpace(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return;
+        if (LoadFailed || !SafeBroadcasterId(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return;
         lock (_gate)
         {
             _states[broadcasterId + ":" + redemptionId] = status;
-            AtomicJson.Write(_path, _states);
+            WriteBroadcaster(broadcasterId);
         }
     }
     public string? Get(string broadcasterId, string redemptionId)
     {
         lock (_gate) return _states.TryGetValue(broadcasterId + ":" + redemptionId, out var result) ? result : null;
     }
+    private void WriteBroadcaster(string broadcasterId)
+    {
+        var prefix = broadcasterId + ":";
+        var entries = _states.Where(entry => entry.Key.StartsWith(prefix, StringComparison.Ordinal))
+            .ToDictionary(entry => entry.Key.Substring(prefix.Length), entry => entry.Value, StringComparer.Ordinal);
+        AtomicJson.Write(Path.Combine(_directory, broadcasterId + ".json"), entries);
+    }
+    private static bool SafeBroadcasterId(string? value) => value != null && !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 128 && value.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_');
 }
 
 [DataContract]

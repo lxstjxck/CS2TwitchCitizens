@@ -116,7 +116,8 @@ internal static class OAuthChecks
             if (path.EndsWith("/device"))
             {
                 Check(body.Contains("user%3Aread%3Achat") && body.Contains("user%3Awrite%3Achat") &&
-                    body.Contains("channel%3Aread%3Aredemptions") && body.Contains("client_id=public-client"));
+                    body.Contains("channel%3Aread%3Aredemptions") &&
+                    body.Contains("channel%3Amanage%3Aredemptions") && body.Contains("client_id=public-client"));
                 json = "{\"device_code\":\"device-1\",\"user_code\":\"ABCD\",\"verification_uri\":\"https://www.twitch.tv/activate\",\"expires_in\":120,\"interval\":5}";
             }
             else if (path.EndsWith("/token") && body.Contains("device_code"))
@@ -128,7 +129,7 @@ internal static class OAuthChecks
             else if (path.EndsWith("/validate"))
             {
                 Check(request.Headers.Authorization?.Scheme == "OAuth");
-                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\",\"user:write:chat\",\"channel:read:redemptions\"]}";
+                json = "{\"client_id\":\"public-client\",\"user_id\":\"42\",\"login\":\"streamer\",\"scopes\":[\"user:read:chat\",\"user:write:chat\",\"channel:read:redemptions\",\"channel:manage:redemptions\"]}";
             }
             else if (path.EndsWith("/users"))
             {

@@ -19,6 +19,7 @@ public sealed class TwitchAuthView
     [DataMember(Name = "eventSubStatus")] public string EventSubStatus { get; set; } = "Disabled";
     [DataMember(Name = "writePermission")] public string WritePermission { get; set; } = "AuthorizationRequired";
     [DataMember(Name = "channelPointsPermission")] public string ChannelPointsPermission { get; set; } = "AuthorizationRequired";
+    [DataMember(Name = "rewardManagePermission")] public string RewardManagePermission { get; set; } = "AuthorizationRequired";
     [DataMember(Name = "channelPointsStatus")] public string ChannelPointsStatus { get; set; } = "Disconnected";
     [DataMember(Name = "reauthorizationState")] public string ReauthorizationState { get; set; } = "Idle";
     [DataMember(Name = "legacyConfig")] public bool LegacyConfig { get; set; }
@@ -76,11 +77,19 @@ public sealed class TwitchConnectionController : IDisposable
             Error = _view.Error, LegacyConfig = _view.LegacyConfig, ModernCredentials = _view.ModernCredentials,
             WritePermission = _view.WritePermission, ReauthorizationState = _view.ReauthorizationState,
             ChannelPointsPermission = _view.ChannelPointsPermission,
+            RewardManagePermission = _view.RewardManagePermission,
             ChannelPointsStatus = _eventSub?.RedemptionStatus ?? "Disconnected",
             EventSubStatus = _eventSub?.Status.ToString() ?? "Disabled"
         }; }
     }
     public string UserId { get { lock (_gate) return _credentials?.UserId ?? ""; } }
+    public TwitchRewardAuthorization? RewardAuthorization
+    {
+        get { lock (_gate) return _view.State == "Connected" && _credentials != null &&
+            _view.ChannelPointsPermission == "Allowed"
+            ? new TwitchRewardAuthorization(_clientId, _credentials.AccessToken, _credentials.UserId,
+                _view.RewardManagePermission == "Allowed") : null; }
+    }
 
     public void Start()
     {
@@ -226,7 +235,7 @@ public sealed class TwitchConnectionController : IDisposable
                     var token = await _oauth.PollAsync(_clientId, code.DeviceCode, cancellation).ConfigureAwait(false);
                     if (token == null) continue;
                     lock (_gate) { if (cancellation.IsCancellationRequested || generation != _generation) return;
-                        _view.WritePermission = "Checking"; }
+                        if (!reauthorize) _view.WritePermission = "Checking"; }
                     var identity = await _oauth.ValidateAsync(_clientId, token.AccessToken, cancellation).ConfigureAwait(false);
                     var credentials = MakeCredentials(token, identity);
                     credentials.DisplayName = await _oauth.GetDisplayNameAsync(_clientId, token.AccessToken, cancellation).ConfigureAwait(false);
@@ -238,7 +247,7 @@ public sealed class TwitchConnectionController : IDisposable
                             throw new UnauthorizedAccessException("Twitch identity changed.");
                         _store.Save(credentials);
                         _view.ModernCredentials = true;
-                        Activate(credentials, "Allowed", "Allowed");
+                        Activate(credentials, "Allowed", "Allowed", "Allowed");
                     } }
                     finally { _refreshGate.Release(); }
                     return;
@@ -266,7 +275,7 @@ public sealed class TwitchConnectionController : IDisposable
             if (_disposed || generation != _generation) return;
             if (!reauthorize) { SetError(error); return; }
             _view.ReauthorizationState = "Idle"; _view.Error = error;
-            _view.WritePermission = "AuthorizationRequired";
+            // The previous token and its permissions remain active after a failed reauthorization.
             _view.UserCode = ""; _view.VerificationUri = ""; _view.ExpiresAt = 0;
         }
     }
@@ -279,7 +288,8 @@ public sealed class TwitchConnectionController : IDisposable
             UserId = identity.UserId, Login = identity.Login, ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(token.ExpiresIn) };
     }
 
-    private void Activate(TwitchCredentials credentials, string writePermission, string pointsPermission)
+    private void Activate(TwitchCredentials credentials, string writePermission, string pointsPermission,
+        string managePermission)
     {
         lock (_gate)
         {
@@ -291,6 +301,7 @@ public sealed class TwitchConnectionController : IDisposable
             _credentials = credentials;
             _view.State = "Connected"; _view.Login = credentials.Login; _view.DisplayName = credentials.DisplayName; _view.Error = "";
             _view.WritePermission = writePermission; _view.ChannelPointsPermission = pointsPermission;
+            _view.RewardManagePermission = managePermission;
             _view.ReauthorizationState = "Idle";
             _view.UserCode = ""; _view.VerificationUri = ""; _view.ExpiresAt = 0;
             _eventSub = new TwitchEventSubService(new TwitchConfig {
@@ -403,11 +414,15 @@ public sealed class TwitchConnectionController : IDisposable
                 {
                     if (generation != _generation || _disposed || (_credentials != null && _credentials.UserId != saved.UserId)) return;
                     var writePermission = identity.Scopes.Contains("user:write:chat") ? "Allowed" : "AuthorizationRequired";
-                    var pointsPermission = identity.Scopes.Contains("channel:read:redemptions") ? "Allowed" : "AuthorizationRequired";
+                    var pointsPermission = identity.Scopes.Contains("channel:read:redemptions") ||
+                        identity.Scopes.Contains("channel:manage:redemptions") ? "Allowed" : "AuthorizationRequired";
+                    var managePermission = identity.Scopes.Contains("channel:manage:redemptions") ?
+                        "Allowed" : "AuthorizationRequired";
                     if (!ReferenceEquals(current, saved) || _credentials == null || _eventSub == null ||
                         _eventSub.Status == TwitchConnectionStatus.AuthenticationError)
-                        Activate(current, writePermission, pointsPermission);
-                    else { _view.WritePermission = writePermission; _view.ChannelPointsPermission = pointsPermission; }
+                        Activate(current, writePermission, pointsPermission, managePermission);
+                    else { _view.WritePermission = writePermission; _view.ChannelPointsPermission = pointsPermission;
+                        _view.RewardManagePermission = managePermission; }
                     if (writePermission != "Allowed") ClearRepliesLocked();
                     _lastValidation = DateTimeOffset.UtcNow;
                 }
@@ -430,11 +445,11 @@ public sealed class TwitchConnectionController : IDisposable
 
     public void Cancel()
     {
-        lock (_gate) { var reauthorizing = _view.ReauthorizationState != "Idle";
+        lock (_gate) {
             _authorization?.Cancel(); if (_view.State == "Pending" || _view.State == "Requesting")
             _view.State = "Disconnected";
             _view.ReauthorizationState = "Idle";
-            if (_credentials == null || reauthorizing) _view.WritePermission = "AuthorizationRequired";
+            if (_credentials == null) _view.WritePermission = "AuthorizationRequired";
             _view.UserCode = ""; _view.VerificationUri = ""; _view.ExpiresAt = 0; }
     }
     public void Reconnect()
@@ -490,4 +505,14 @@ public sealed class TwitchConnectionController : IDisposable
         if (_replyWorker == null) { _chatSender.Dispose(); _replyScope.Dispose(); }
         else _replyWorker.ContinueWith(_ => { _chatSender.Dispose(); _replyScope.Dispose(); }, TaskScheduler.Default);
     }
+}
+
+public sealed class TwitchRewardAuthorization
+{
+    public string ClientId { get; }
+    public string AccessToken { get; }
+    public string BroadcasterId { get; }
+    public bool CanManage { get; }
+    public TwitchRewardAuthorization(string clientId, string accessToken, string broadcasterId, bool canManage)
+    { ClientId = clientId; AccessToken = accessToken; BroadcasterId = broadcasterId; CanManage = canManage; }
 }

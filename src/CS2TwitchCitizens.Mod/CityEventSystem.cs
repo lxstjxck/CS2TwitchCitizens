@@ -56,7 +56,8 @@ namespace CS2TwitchCitizens.Mod
                     var canceled = redemption.Status == "canceled";
                     ledger.MarkExternalStatus(redemption.BroadcasterId, redemption.RedemptionId,
                         canceled ? "Canceled" : "FulfilledInTwitch");
-                    if (canceled && _active?.RedemptionId == redemption.RedemptionId) _active = null;
+                    if (_active?.RedemptionId == redemption.RedemptionId && _active.State == "AwaitingDisplay")
+                        _active = null;
                     if (_presentation.Count > 0)
                     {
                         var pending = _presentation.Where(e => e.RedemptionId != redemption.RedemptionId).ToArray();
@@ -80,6 +81,7 @@ namespace CS2TwitchCitizens.Mod
                     last == default ? (DateTimeOffset?)null : last, DateTimeOffset.UtcNow, out var text);
                 if (result == "Ready" && rule != null)
                 {
+                    ledger.Finish(redemption.BroadcasterId, redemption.RedemptionId, RedemptionLedger.Reserved);
                     var record = new CityEventRecord {
                         Id = Guid.NewGuid().ToString("N"), Type = rule.Action,
                         TwitchUserId = redemption.TwitchUserId, BroadcasterId = redemption.BroadcasterId,
@@ -102,11 +104,12 @@ namespace CS2TwitchCitizens.Mod
                             record.CanFindCitizen = citizen.PositionAvailable;
                         }
                     }
-                    if (Execute(record)) { _lastAction[rule.RewardId] = DateTimeOffset.UtcNow; result = "Queued"; }
+                    if (Execute(record)) { _lastAction[rule.RewardId] = DateTimeOffset.UtcNow;
+                        result = RedemptionLedger.AwaitingExecution; }
                     else result = "ExecutorFailed";
                 }
                 ledger.Finish(redemption.BroadcasterId, redemption.RedemptionId, result);
-                if (result != "Queued")
+                if (result != RedemptionLedger.AwaitingExecution)
                 {
                     _lastError = result;
                     Remember(new CityEventRecord { Id = Guid.NewGuid().ToString("N"),
@@ -120,6 +123,8 @@ namespace CS2TwitchCitizens.Mod
             catch (Exception ex)
             {
                 _lastError = "ProcessingError";
+                try { ledger.Finish(redemption.BroadcasterId, redemption.RedemptionId, RedemptionLedger.ManualReview); }
+                catch { _lastError = "LedgerWriteFailed"; }
                 Mod.Log.Info("[CS2TwitchCitizens] Redemption processing error=" + ex.GetType().Name);
             }
         }
@@ -146,14 +151,33 @@ namespace CS2TwitchCitizens.Mod
             _active = _presentation.Count > 0 ? _presentation.Dequeue() : null;
             if (_active != null)
             {
-                _active.State = "Completed";
-                _active.Result = "UI displayed; no simulation change";
+                _active.State = "AwaitingDisplay";
+                _active.Result = "Waiting for UI acknowledgement";
                 _activeUntil = DateTimeOffset.UtcNow.AddSeconds(_active.DisplaySeconds);
                 if (!string.IsNullOrEmpty(_active.RedemptionId))
-                    try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId, "Displayed"); }
+                    try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId,
+                        RedemptionLedger.ExecutedInGame); }
                     catch (Exception ex) { _lastError = "LedgerWriteFailed";
-                        Mod.Log.Info("[CS2TwitchCitizens] Redemption display record error=" + ex.GetType().Name); }
+                        Mod.Log.Info("[CS2TwitchCitizens] Redemption execution record error=" + ex.GetType().Name); }
             }
+        }
+
+        public void Acknowledge(string id)
+        {
+            if (_active == null || _active.Id != id || _active.State != "AwaitingDisplay") return;
+            _active.State = "Completed";
+            _active.Result = "UI displayed; no simulation change";
+            if (string.IsNullOrEmpty(_active.RedemptionId)) return;
+            try { Mod.RedemptionLedger?.Finish(_active.BroadcasterId, _active.RedemptionId,
+                RedemptionLedger.AwaitingTwitchConfirmation); }
+            catch (Exception ex) { _lastError = "LedgerWriteFailed";
+                Mod.Log.Info("[CS2TwitchCitizens] Redemption display record error=" + ex.GetType().Name); }
+            if (Mod.RedemptionLedger?.Get(_active.BroadcasterId, _active.RedemptionId) ==
+                RedemptionLedger.AwaitingTwitchConfirmation &&
+                Mod.InteractiveSettings?.Find(_active.RewardId) is { AutoFulfill: true } rule &&
+                (rule.Action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement or
+                    InteractiveAction.CityCelebration or InteractiveAction.EmergencyAlert))
+                Mod.Rewards?.EnqueueAutoFulfill(_active.BroadcasterId, _active.RewardId, _active.RedemptionId);
         }
 
         public void Test(string action)

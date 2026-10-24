@@ -9,6 +9,7 @@ namespace CS2TwitchCitizens.Twitch;
 public sealed class TwitchOAuthClient : IDisposable
 {
     private const string Base = "https://id.twitch.tv/oauth2/";
+    public const string RequestedScopes = "user:read:chat user:write:chat channel:read:redemptions channel:manage:redemptions";
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     public TwitchOAuthClient(HttpClient? http = null)
@@ -20,7 +21,7 @@ public sealed class TwitchOAuthClient : IDisposable
     public async Task<TwitchDeviceCode> RequestDeviceAsync(string clientId, CancellationToken cancellation)
     {
         using var response = await PostAsync("device", new Dictionary<string, string> {
-            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat channel:read:redemptions"
+            ["client_id"] = clientId, ["scopes"] = RequestedScopes
         }, cancellation).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) throw new HttpRequestException("Device authorization unavailable.");
         var code = await ReadAsync<TwitchDeviceCode>(response).ConfigureAwait(false);
@@ -34,7 +35,7 @@ public sealed class TwitchOAuthClient : IDisposable
     public async Task<TwitchToken?> PollAsync(string clientId, string deviceCode, CancellationToken cancellation)
     {
         using var response = await PostAsync("token", new Dictionary<string, string> {
-            ["client_id"] = clientId, ["scopes"] = "user:read:chat user:write:chat channel:read:redemptions", ["device_code"] = deviceCode,
+            ["client_id"] = clientId, ["scopes"] = RequestedScopes, ["device_code"] = deviceCode,
             ["grant_type"] = "urn:ietf:params:oauth:grant-type:device_code"
         }, cancellation).ConfigureAwait(false);
         if (response.IsSuccessStatusCode) return await ReadAsync<TwitchToken>(response).ConfigureAwait(false);
@@ -70,7 +71,8 @@ public sealed class TwitchOAuthClient : IDisposable
         if (identity.ClientId != clientId || string.IsNullOrWhiteSpace(identity.UserId) ||
             identity.Scopes == null || !identity.Scopes.Contains("user:read:chat") ||
             (requireAllScopes && (!identity.Scopes.Contains("user:write:chat") ||
-                !identity.Scopes.Contains("channel:read:redemptions"))))
+                !identity.Scopes.Contains("channel:read:redemptions") ||
+                !identity.Scopes.Contains("channel:manage:redemptions"))))
             throw new UnauthorizedAccessException("Twitch account or scope mismatch.");
         return identity;
     }

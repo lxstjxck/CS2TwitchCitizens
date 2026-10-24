@@ -12,6 +12,7 @@ const moduleObject = { exports: {} };
 const localRequire = spec => {
   if (spec === "react" || spec === "react/jsx-runtime") return require(spec);
   if (spec === "cs2/ui") return { Button: ({ children, ...props }) => React.createElement("button", {}, children) };
+  if (spec === "./reward-manager") return { RewardManagerPanel: () => React.createElement("div", {}, "Rewards") };
   if (spec.endsWith(".module.scss")) return new Proxy({}, { get: (_, key) => String(key) });
   throw new Error(`Unexpected import: ${spec}`);
 };

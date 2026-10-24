@@ -109,6 +109,10 @@
 .interactiveLimits label { display: flex; flex-direction: column; flex: 1; min-width: 85px; font-size: 11px; }
 .interactiveLimits input { width: 100%; box-sizing: border-box; padding: 5px; color: #eef5fa;
   background: #1c3447; border: 1px solid #607f91; border-radius: 4px; }
+.rewardRow { width: 100%; text-align: left; overflow-wrap: anywhere; }
+.rewardRow[data-selected="true"] { border-color: #4aaac4; background: #286987; }
+.rewardEditor label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.rewardEditor .search { padding: 5px 7px; }
 .panel .tab { border-color: transparent; background: transparent; color: #b9cbd6; text-decoration: none; }
 .panel .tab:hover { background: #31556b; color: #f0f9fc; }
 .panel .tab[data-selected="true"] { border-color: #4aaac4; background: #286987; color: #fff; text-decoration: none; }

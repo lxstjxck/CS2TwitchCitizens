@@ -72,6 +72,12 @@ internal static class InteractiveChecks
             registry.Update("{\"version\":1,\"enabled\":true,\"rewards\":[{\"rewardId\":\"reward-1\",\"action\":\"ShowMessage\",\"enabled\":true,\"maxTextLength\":180,\"cooldownSeconds\":15,\"displaySeconds\":8}]}");
             Check(registry.Current.Enabled && registry.Find("reward-1")?.Action == InteractiveAction.ShowMessage);
             var rule = registry.Find("reward-1")!;
+            Check(!rule.AutoFulfill);
+            var autoSettings = registry.Current;
+            autoSettings.Rewards[0].AutoFulfill = true;
+            registry.Update(autoSettings.ToJson());
+            Check(new RewardActionRegistry(settingsPath).Find("reward-1")?.AutoFulfill == true);
+            rule = registry.Find("reward-1")!;
             var now = DateTimeOffset.UtcNow;
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out var text) == "Ready" &&
                 text == "Привет, город!");
@@ -79,6 +85,9 @@ internal static class InteractiveChecks
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, now, now, out _) == "Cooldown");
             redemption.UserInput = " \t ";
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out _) == "EmptyMessage");
+            Check(InteractivePolicy.Check(registry.Current,
+                new RewardRule { RewardId = "reward-1", Action = InteractiveAction.CityCelebration },
+                redemption, null, now, out _) == "Ready");
             redemption.UserInput = new string('x', 500);
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out text) == "Ready" &&
                 text.Length == 180);
@@ -102,6 +111,14 @@ internal static class InteractiveChecks
             ledger.MarkExternalStatus("42", "redemption-2", "Canceled");
             Check(!new RedemptionLedger(ledgerPath).TryReserve("42", "redemption-2") &&
                 new RedemptionLedger(ledgerPath).Get("42", "redemption-2") == "Canceled");
+            Check(File.Exists(Path.Combine(directory, "redemptions", "42.json")) &&
+                File.Exists(Path.Combine(directory, "redemptions", "other.json")));
+            File.WriteAllText(ledgerPath, JsonData.Write(new Dictionary<string, string> {
+                ["42:redemption-legacy"] = "Displayed" }));
+            var migrated = new RedemptionLedger(ledgerPath);
+            Check(migrated.Get("42", "redemption-legacy") == "Displayed" &&
+                !migrated.TryReserve("42", "redemption-legacy") &&
+                migrated.Get("42", "redemption-1") == "Displayed");
             File.WriteAllText(ledgerPath, "broken");
             var corrupt = new RedemptionLedger(ledgerPath);
             Check(corrupt.LoadFailed && !corrupt.TryReserve("42", "redemption-2"));

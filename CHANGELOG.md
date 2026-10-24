@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1 — Twitch reward manager (live verification pending)
+
+- Added Helix reward CRUD and redemption list/status operations with broadcaster identity checks, app ownership via `only_manageable_rewards`, scope separation, validated fields, bounded read retries, and no blind create retry. An uncertain create is persisted by broadcaster and reconciled on sync before another create.
+- Added an in-game reward list and editor for price, text, color, limits, cooldown, availability, local action binding, and explicit deletion confirmation. External rewards can be linked but cannot be edited, deleted, or used for app-only redemption management.
+- Added manual redemption fulfillment and cancellation with Twitch status confirmation. Fulfillment requires the game UI to acknowledge actual presentation. Automatic fulfillment is opt-in per supported UI reward and off by default; it rechecks Twitch status after display and leaves failures for manual review. `GameDisaster` remains disabled.
+- Split new redemption journals by broadcaster while reading the v0.9.0 flat ledger for migration. Added stages for reservation, execution, display acknowledgement, Twitch confirmation, and manual review without repeating an accepted redemption.
+- Fixed the local ModPostProcessor failure: `CSII_UNITYVERSION` was missing in the user environment. The official build script now temporarily provides the validated installed version and restores the previous value. C# checks, UI checks, TypeScript typecheck, ModPostProcessor, Burst, DeployWIP, and UI deployment passed; live Twitch and game behavior remain unverified.
+
 ## 0.9.0 — Channel Points and city events foundation (game verification pending)
 
 - Extended the existing broadcaster EventSub WebSocket with custom reward redemption add and update subscriptions. Device authorization requests `channel:read:redemptions` alongside the existing chat scopes; saved credentials still use DPAPI. Missing Channel Points permission is shown separately and can be renewed in the panel.

@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $project = Join-Path $root 'src\CS2TwitchCitizens.Mod\CS2TwitchCitizens.Mod.csproj'
 $ui = Join-Path $root 'src\CS2TwitchCitizens.UI'
-$expectedVersion = '0.9.0.0'
+$expectedVersion = '0.9.1.0'
 
 function Require-Path([string]$name, [string]$value) {
     if ([string]::IsNullOrWhiteSpace($value) -or -not (Test-Path -LiteralPath $value)) {
@@ -22,7 +22,8 @@ $unityProject = $env:CSII_UNITYMODPROJECTPATH
 $processor = $env:CSII_MODPOSTPROCESSORPATH
 $mscorlib = $env:CSII_MSCORLIBPATH
 $entitiesVersion = $env:CSII_ENTITIESVERSION
-$unityVersion = [Environment]::GetEnvironmentVariable('CSII_UNITYVERSION', [EnvironmentVariableTarget]::User)
+$originalUnityVersion = [Environment]::GetEnvironmentVariable('CSII_UNITYVERSION', [EnvironmentVariableTarget]::User)
+$unityVersion = $originalUnityVersion
 if ([string]::IsNullOrWhiteSpace($unityVersion)) { $unityVersion = $env:CSII_UNITYVERSION }
 
 Require-Path 'CSII_MANAGEDPATH' $managed
@@ -56,8 +57,25 @@ $buildArgs = @(
     "-p:EntitiesVersion=$entitiesVersion"
 )
 if ($TwitchClientId) { $buildArgs += "-p:TwitchClientId=$TwitchClientId" }
-& dotnet @buildArgs
-if ($LASTEXITCODE -ne 0) { throw "Official Code Mod build and DeployWIP failed with exit code $LASTEXITCODE." }
+$temporaryUnityVersion = [string]::IsNullOrWhiteSpace($originalUnityVersion)
+if ($temporaryUnityVersion) {
+    # ModPostProcessor.PathSet reads the User environment, not the child process environment.
+    try {
+        [Environment]::SetEnvironmentVariable('CSII_UNITYVERSION', $unityVersion, [EnvironmentVariableTarget]::User)
+    }
+    catch {
+        throw "Cannot set User CSII_UNITYVERSION=$unityVersion. In a user shell run: setx CSII_UNITYVERSION $unityVersion; reopen the shell and rerun this script."
+    }
+}
+try {
+    & dotnet @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw "Official Code Mod build and DeployWIP failed with exit code $LASTEXITCODE." }
+}
+finally {
+    if ($temporaryUnityVersion) {
+        [Environment]::SetEnvironmentVariable('CSII_UNITYVERSION', $originalUnityVersion, [EnvironmentVariableTarget]::User)
+    }
+}
 
 $deployedMod = Join-Path $localMods 'CS2TwitchCitizens.Mod\CS2TwitchCitizens.Mod.dll'
 Require-Path 'Deployed Code Mod' $deployedMod
@@ -80,12 +98,12 @@ $uiDir = Join-Path $data 'Mods\CS2TwitchCitizens.UI'
 $uiBundle = Join-Path $uiDir 'CS2TwitchCitizens.UI.mjs'
 Require-Path 'Deployed UI bundle' $uiBundle
 Require-Path 'Deployed UI stylesheet' (Join-Path $uiDir 'CS2TwitchCitizens.UI.css')
-if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Version: 0.9.0' -SimpleMatch -Quiet)) {
-    throw 'Deployed UI bundle does not carry the v0.9.0 banner.'
+if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Version: 0.9.1' -SimpleMatch -Quiet)) {
+    throw 'Deployed UI bundle does not carry the v0.9.1 banner.'
 }
 $gameAssemblies = Get-ChildItem -LiteralPath $deployedModDir -File |
     Where-Object Name -In @('Game.dll', 'Unity.Entities.dll', 'Unity.Collections.dll', 'Unity.Mathematics.dll')
 if ($gameAssemblies) { throw 'Deployed Code Mod contains game assemblies.' }
 
 Write-Host "Code Mod v${expectedVersion}: $deployedModDir"
-Write-Host "UI v0.9.0: $uiDir"
+Write-Host "UI v0.9.1: $uiDir"
