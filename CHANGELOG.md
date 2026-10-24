@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Paradox Mods preparation for 0.9.2
+
+- Added an official Release build and isolated staging package for the Code Mod, UI and Burst output. Development `build-official.ps1` remains available.
+- Added package validation for owned files, version alignment, UI module ID, publish metadata, forbidden files and possible credentials, plus SHA-256 hashes.
+- Added a publish configuration and a separate, confirmation-gated Publisher command for first publication, later versions and metadata updates. No publication was performed. A real thumbnail, confirmed Twitch Client ID and subscription test are still required.
+- Added publisher and subscriber instructions. The UI module ID is aligned with the Code Mod while keeping the existing `CS2TwitchCitizens.UI.mjs`/`.css` bundle names.
+
 ## 0.9.2 — Fixed rewards and message layout (live verification pending)
 
 - Replaced the generic reward editor with fixed ShowMessage and CityAnnouncement cards. Twitch titles, prompts, actions, and default prices are defined by the mod; the UI exposes only price and enabled state.

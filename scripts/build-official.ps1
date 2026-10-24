@@ -94,12 +94,15 @@ try {
 }
 finally { Pop-Location }
 
-$uiDir = Join-Path $data 'Mods\CS2TwitchCitizens.UI'
+$uiDir = Join-Path $data 'Mods\CS2TwitchCitizens.Mod'
 $uiBundle = Join-Path $uiDir 'CS2TwitchCitizens.UI.mjs'
 Require-Path 'Deployed UI bundle' $uiBundle
 Require-Path 'Deployed UI stylesheet' (Join-Path $uiDir 'CS2TwitchCitizens.UI.css')
 if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Version: 0.9.2' -SimpleMatch -Quiet)) {
     throw 'Deployed UI bundle does not carry the v0.9.2 banner.'
+}
+if (-not (Select-String -LiteralPath $uiBundle -Pattern 'Id: CS2TwitchCitizens.Mod' -SimpleMatch -Quiet)) {
+    throw 'Deployed UI bundle does not carry the matching Code Mod ID.'
 }
 $gameAssemblies = Get-ChildItem -LiteralPath $deployedModDir -File |
     Where-Object Name -In @('Game.dll', 'Unity.Entities.dll', 'Unity.Collections.dll', 'Unity.Mathematics.dll')

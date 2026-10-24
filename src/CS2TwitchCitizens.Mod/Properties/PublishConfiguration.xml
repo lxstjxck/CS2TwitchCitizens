@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Publish>
+  <!-- Fill only after the first successful publication. Keep this ID for later versions. -->
+  <ModId Value="" />
+  <DisplayName Value="CS2 Twitch Citizens" />
+  <ShortDescription Value="Connect Twitch viewers to citizens in Cities: Skylines II, with chat commands, citizen tracking, and interactive Channel Points rewards." />
+  <LongDescription>
+CS2 Twitch Citizens connects a broadcaster's Twitch channel to a Cities: Skylines II city. Sign in with Twitch Device Code authorization. Viewers can use !join to become linked to a citizen, !me to see their citizen's details, !find to locate them, and !history to review their recorded lives. Bindings and life history are stored with the city.
+
+The in-game panel supports citizen search and tracking, command settings, and English and Russian interface text. Two fixed Channel Points rewards are supported: Message to the city displays a short notice in the upper-right corner; City announcement displays a larger notice in the center. The broadcaster can synchronize these rewards with Twitch, enable or disable them, and set their point costs. Reward management requires the broadcaster's authorization with the requested Twitch scopes.
+
+Experimental: features and UI behavior are still being tested in live games. Make a backup of your city before testing. Twitch-triggered fires, floods, and other disasters are not implemented.
+  </LongDescription>
+  <Thumbnail Value="Properties/Thumbnail.png" />
+  <Tag Value="Code Mod" />
+  <ModVersion Value="0.9.2" />
+  <!-- Verified in the locally installed game's Player.log on 2026-10-24. Recheck before publication. -->
+  <GameVersion Value="1.6.2f1" />
+  <ExternalLink Type="github" Url="https://github.com/lxstjxck/CS2TwitchCitizens" />
+  <AccessLevel Value="Unlisted" />
+</Publish>

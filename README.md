@@ -1,5 +1,9 @@
 # CS2 Twitch Citizens
 
+## Paradox Mods preparation
+
+Version 0.9.2 is being prepared for a first test listing; it has not been published by the repository scripts. [PUBLISHING.md](PUBLISHING.md) covers the one-command Release build, staged package verification, first publication, later updates using the same ModId, and recovery. [TESTING.md](TESTING.md) is the subscriber test checklist. A real registered public Twitch Client ID and an original `Properties/Thumbnail.png` are required before publication. The local development build remains available through `scripts/build-official.ps1`.
+
 CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.2 offers two fixed Channel Points rewards: **Message to the city** and **City announcement**. The streamer can enable or disable them and change their point cost. Messages appear at the upper right for eight seconds; announcements appear at the center for at most 30 seconds. Both can be dismissed early. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the reward manager and newer UI still need a live Twitch and in-game check.
 
 ## Channel Points setup

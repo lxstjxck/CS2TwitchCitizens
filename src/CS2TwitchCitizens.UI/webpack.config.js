@@ -11,7 +11,7 @@ if (!CSII_USERDATAPATH) {
   throw "CSII_USERDATAPATH environment variable is not set, ensure the CSII Modding Toolchain is installed correctly";
 }
 
-const OUTPUT_DIR = `${CSII_USERDATAPATH}\\Mods\\${MOD.id}`;
+const OUTPUT_DIR = process.env.CS2TC_UI_OUTPUT_DIR || path.join(CSII_USERDATAPATH, "Mods", MOD.id);
 
 const banner = `
  * Cities: Skylines II UI Module
@@ -26,7 +26,7 @@ module.exports = {
   mode: "production",
   stats: "none",
   entry: {
-    [MOD.id]: "./src/index.tsx",
+    "CS2TwitchCitizens.UI": "./src/index.tsx",
   },
   externalsType: "window",
   externals: {
@@ -86,6 +86,7 @@ module.exports = {
   },
   output: {
     path: path.resolve(__dirname, OUTPUT_DIR),
+    clean: Boolean(process.env.CS2TC_UI_OUTPUT_DIR),
     library: {
       type: "module",
     },
