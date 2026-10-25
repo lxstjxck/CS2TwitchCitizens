@@ -28,6 +28,7 @@ public sealed class TwitchAuthView
     {
         using var stream = new MemoryStream();
         new DataContractJsonSerializer(typeof(TwitchAuthView)).WriteObject(stream, this);
+        StabilityMetrics.Json(stream.Length > int.MaxValue ? int.MaxValue : (int)stream.Length);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
@@ -58,6 +59,13 @@ public sealed class TwitchConnectionController : IDisposable
     private DateTimeOffset _lastValidation;
     private bool _disposed;
     private int _generation;
+    private int _eventSubRecoveryEpoch;
+    public int EventSubRecoveryEpoch { get { lock (_gate) return _eventSubRecoveryEpoch; } }
+    public int SessionGeneration { get { lock (_gate) return _generation; } }
+    public int ActiveBackgroundTasks { get { lock (_gate) return
+        (_maintenance is { IsCompleted: false } ? 1 : 0) +
+        (_replyWorker is { IsCompleted: false } ? 1 : 0) +
+        (_eventSub?.ActiveBackgroundTasks ?? 0); } }
 
     public TwitchConnectionController(string clientId, TwitchCredentialStore store, TwitchOAuthClient oauth,
         TwitchCommandQueue queue, Action<string> log, bool legacyConfig, CommandSettingsController? settings = null,
@@ -308,10 +316,17 @@ public sealed class TwitchConnectionController : IDisposable
             _view.RewardManagePermission = managePermission;
             _view.ReauthorizationState = "Idle";
             _view.UserCode = ""; _view.VerificationUri = ""; _view.ExpiresAt = 0;
-            _eventSub = new TwitchEventSubService(new TwitchConfig {
+            var generation = _generation;
+            TwitchEventSubService? service = null;
+            service = new TwitchEventSubService(new TwitchConfig {
                 Enabled = true, ClientId = _clientId, AccessToken = credentials.AccessToken,
                 BroadcasterUserId = credentials.UserId, UserId = credentials.UserId
-            }, _queue, _log, _redemptions);
+            }, _queue, _log, _redemptions, () => {
+                lock (_gate)
+                    if (!_disposed && generation == _generation && ReferenceEquals(_eventSub, service))
+                        _eventSubRecoveryEpoch++;
+            });
+            _eventSub = service;
             _eventSub.Start();
             _lastValidation = DateTimeOffset.UtcNow;
         }
@@ -460,10 +475,15 @@ public sealed class TwitchConnectionController : IDisposable
     {
         TwitchCredentials? saved;
         int generation;
-        lock (_gate) { saved = _credentials; generation = _generation; _eventSub?.Dispose(); _eventSub = null; }
+        lock (_gate) { if (_disposed) return; saved = _credentials; generation = ++_generation;
+            _authorization?.Cancel(); _authorization = null;
+            ClearRepliesLocked(); _eventSub?.Dispose(); _eventSub = null; }
+        _queue.Clear();
+        _redemptions?.Clear();
         if (saved != null) _ = Task.Run(async () => {
             try { await RestoreAsync(saved, _lifetime.Token, false, generation).ConfigureAwait(false); }
             catch (OperationCanceledException) { }
+            catch (Exception ex) { if (!_disposed) _log("[CS2TwitchCitizens] Twitch reconnect failed: " + ex.GetType().Name); }
         });
         else Connect();
     }

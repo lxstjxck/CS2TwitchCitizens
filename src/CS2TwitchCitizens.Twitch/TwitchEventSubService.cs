@@ -13,6 +13,8 @@ namespace CS2TwitchCitizens.Twitch;
 /// <summary>Network-only EventSub client. Its only game-facing handoff is TwitchCommandQueue.</summary>
 public sealed class TwitchEventSubService : IDisposable
 {
+    private static readonly bool DiagnosticLogging =
+        Environment.GetEnvironmentVariable("CS2TWITCHCITIZENS_DIAGNOSTICS") == "1";
     private static readonly Uri Endpoint = new Uri("wss://eventsub.wss.twitch.tv/ws");
     private static readonly Uri ValidateEndpoint = new Uri("https://id.twitch.tv/oauth2/validate");
     private static readonly Uri SubscriptionsEndpoint = new Uri("https://api.twitch.tv/helix/eventsub/subscriptions");
@@ -20,6 +22,7 @@ public sealed class TwitchEventSubService : IDisposable
     private readonly TwitchCommandQueue _queue;
     private readonly RedemptionQueue? _redemptions;
     private readonly Action<string> _log;
+    private readonly Action? _fullSessionConnected;
     private readonly HttpClient _http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
     private readonly CancellationTokenSource _stop = new CancellationTokenSource();
     private readonly EventSubMessageIds _messageIds = new EventSubMessageIds();
@@ -35,13 +38,16 @@ public sealed class TwitchEventSubService : IDisposable
 
     public TwitchConnectionStatus Status => _status;
     public string RedemptionStatus => _redemptionStatus;
+    public int ActiveBackgroundTasks => _worker is { IsCompleted: false } ? 1 : 0;
 
-    public TwitchEventSubService(TwitchConfig config, TwitchCommandQueue queue, Action<string> log, RedemptionQueue? redemptions = null)
+    public TwitchEventSubService(TwitchConfig config, TwitchCommandQueue queue, Action<string> log,
+        RedemptionQueue? redemptions = null, Action? fullSessionConnected = null)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _redemptions = redemptions;
+        _fullSessionConnected = fullSessionConnected;
         if (!config.Enabled || !config.IsComplete)
             throw new ArgumentException("Enabled Twitch config must be complete.", nameof(config));
     }
@@ -56,13 +62,13 @@ public sealed class TwitchEventSubService : IDisposable
 
     private async Task RunAsync(CancellationToken cancellationToken)
     {
-        var failures = 0;
+        var retry = new EventSubRetryTracker();
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
                 await ValidateTokenAsync(cancellationToken).ConfigureAwait(false);
-                await ConnectAndListenAsync(cancellationToken).ConfigureAwait(false);
+                await ConnectAndListenAsync(retry, cancellationToken).ConfigureAwait(false);
                 if (!cancellationToken.IsCancellationRequested)
                     _log("[CS2TwitchCitizens] Twitch WebSocket disconnected");
             }
@@ -85,10 +91,9 @@ public sealed class TwitchEventSubService : IDisposable
 
             if (cancellationToken.IsCancellationRequested)
                 return;
-            failures++;
             _status = TwitchConnectionStatus.Reconnecting;
             if (_hasRedemptionScope) _redemptionStatus = "Reconnecting";
-            var delay = EventSubRetryPolicy.Delay(failures);
+            var delay = retry.Disconnected();
             _log($"[CS2TwitchCitizens] Twitch reconnect in {delay.TotalSeconds:0}s");
             try { await Task.Delay(delay, cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
@@ -129,7 +134,7 @@ public sealed class TwitchEventSubService : IDisposable
         _validatedAt = DateTimeOffset.UtcNow;
     }
 
-    private async Task ConnectAndListenAsync(CancellationToken cancellationToken)
+    private async Task ConnectAndListenAsync(EventSubRetryTracker retry, CancellationToken cancellationToken)
     {
         var socket = await ConnectAsync(Endpoint, cancellationToken).ConfigureAwait(false);
         try
@@ -156,6 +161,8 @@ public sealed class TwitchEventSubService : IDisposable
                 catch (Exception ex) { _log("[CS2TwitchCitizens] Reward icon lookup failed: " + ex.GetType().Name); }
             }
             _status = TwitchConnectionStatus.Connected;
+            retry.Connected();
+            _fullSessionConnected?.Invoke();
             var keepalive = KeepaliveTimeout(welcome);
 
             while (!cancellationToken.IsCancellationRequested)
@@ -171,7 +178,7 @@ public sealed class TwitchEventSubService : IDisposable
                 {
                     if (!EventSubProtocol.TryGetReconnectUri(envelope, out var uri))
                         throw new InvalidDataException("Invalid Twitch reconnect URL.");
-                    var replacement = await ConnectAsync(uri!, cancellationToken).ConfigureAwait(false);
+                    var replacement = await ConnectAsync(uri!, cancellationToken, false).ConfigureAwait(false);
                     _status = TwitchConnectionStatus.Reconnecting;
                     var transferred = false;
                     try
@@ -180,6 +187,11 @@ public sealed class TwitchEventSubService : IDisposable
                         if (nextWelcome?.Metadata?.MessageType != "session_welcome" || string.IsNullOrWhiteSpace(nextWelcome.Payload?.Session?.Id))
                             throw new InvalidDataException("Twitch reconnect Welcome missing.");
                         keepalive = KeepaliveTimeout(nextWelcome);
+                        lock (_socketGate)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            _socket = replacement;
+                        }
                         socket.Dispose();
                         socket = replacement;
                         transferred = true;
@@ -220,8 +232,13 @@ public sealed class TwitchEventSubService : IDisposable
                     _log("[Interactive] source=EventSub result=InvalidEvent");
                 else if (EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command))
                 {
-                    _queue.Enqueue(command!);
-                    _log($"[CS2TwitchCitizens] TWITCH COMMAND viewer={command!.TwitchUserId} login={command.Login} command={command.Command}");
+                    if (!_queue.TryEnqueue(command!))
+                    {
+                        if (_queue.Rejected % 100 == 1)
+                            _log($"[CS2TwitchCitizens] Twitch command queue full rejected={_queue.Rejected} depth={_queue.Count}");
+                    }
+                    else if (DiagnosticLogging)
+                        _log($"[CS2TwitchCitizens] TWITCH COMMAND viewer={command!.TwitchUserId} command={command.Command}");
                 }
             }
         }
@@ -235,7 +252,8 @@ public sealed class TwitchEventSubService : IDisposable
         }
     }
 
-    private async Task<ClientWebSocket> ConnectAsync(Uri uri, CancellationToken cancellationToken)
+    private async Task<ClientWebSocket> ConnectAsync(Uri uri, CancellationToken cancellationToken,
+        bool activate = true)
     {
         var socket = new ClientWebSocket();
         try
@@ -248,7 +266,7 @@ public sealed class TwitchEventSubService : IDisposable
             lock (_socketGate)
             {
                 if (cancellationToken.IsCancellationRequested) throw new OperationCanceledException();
-                _socket = socket;
+                if (activate) _socket = socket;
             }
             _log("[CS2TwitchCitizens] Twitch connected");
             return socket;

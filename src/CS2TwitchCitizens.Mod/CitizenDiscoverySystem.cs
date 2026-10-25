@@ -10,6 +10,8 @@ namespace CS2TwitchCitizens.Mod
     /// <summary>Read-only snapshot of at most five citizens on first update and every 1,024 updates thereafter.</summary>
     public sealed partial class CitizenDiscoverySystem : GameSystemBase
     {
+        private static readonly bool DiagnosticLogging =
+            System.Environment.GetEnvironmentVariable("CS2TWITCHCITIZENS_DIAGNOSTICS") == "1";
         private const int ScanInterval = 1024;
         private const int SampleLimit = 5;
         private EntityQuery _citizens;
@@ -28,6 +30,7 @@ namespace CS2TwitchCitizens.Mod
 
         protected override void OnUpdate()
         {
+            if (!DiagnosticLogging) return;
             if (!_firstUpdateLogged)
             {
                 _firstUpdateLogged = true;

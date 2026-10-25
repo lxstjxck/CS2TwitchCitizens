@@ -38,6 +38,7 @@ namespace CS2TwitchCitizens.Mod
         [DataMember(Name = "fresh")] public bool Fresh { get; set; }
         [DataMember(Name = "fixedRewards")] public FixedRewardView[] FixedRewards { get; set; } = Array.Empty<FixedRewardView>();
         [DataMember(Name = "legacyActive")] public string[] LegacyActive { get; set; } = Array.Empty<string>();
+        [DataMember(Name = "reconciliationReview")] public int ReconciliationReview { get; set; }
         public string ToJson() => JsonData.Write(this);
     }
 
@@ -72,6 +73,11 @@ namespace CS2TwitchCitizens.Mod
         private string _pendingBroadcasterId = "";
         private DateTimeOffset _lastSync = DateTimeOffset.MinValue;
         private DateTimeOffset _nextAutomaticSync = DateTimeOffset.MinValue;
+        private int _lastReconciledEpoch;
+        private int _operationGeneration;
+        public int ActiveBackgroundTasks { get { lock (_gate) return
+            (_activeWork is { IsCompleted: false } ? 1 : 0) +
+            (_autoWorker is { IsCompleted: false } ? 1 : 0); } }
 
         public RewardManagementController(TwitchConnectionController connection, RewardActionRegistry registry,
             RedemptionLedger ledger, string recoveryDirectory, TwitchRewardManager? api = null)
@@ -89,13 +95,15 @@ namespace CS2TwitchCitizens.Mod
         {
             var access = _connection.RewardAuthorization;
             if (access == null) return;
+            var recoveryDue = _connection.EventSubRecoveryEpoch > Volatile.Read(ref _lastReconciledEpoch);
             lock (_gate)
             {
                 if (_disposed || _state.Busy || DateTimeOffset.UtcNow < _nextAutomaticSync) return;
-                if (_state.Fresh && _state.BroadcasterId == access.BroadcasterId &&
+                if (!recoveryDue && _state.Fresh && _state.BroadcasterId == access.BroadcasterId &&
                     DateTimeOffset.UtcNow - _lastSync < TimeSpan.FromMinutes(5)) return;
                 _nextAutomaticSync = DateTimeOffset.UtcNow.AddMinutes(1);
                 _state.Busy = true;
+                _operationGeneration = _connection.SessionGeneration;
                 _state.Fresh = false;
                 _state.Status = "Checking";
                 _activeWork = Task.Run(() => RunAsync(new RewardManagerCommand { Operation = "Sync" }, _stop.Token));
@@ -123,6 +131,7 @@ namespace CS2TwitchCitizens.Mod
             {
                 if (_disposed || _state.Busy) return;
                 _state.Busy = true; _state.Status = "";
+                _operationGeneration = _connection.SessionGeneration;
                 if (command.Operation is "Sync" or "FixedEnable" or "FixedDisable" or "FixedCost")
                     _state.Fresh = false;
                 var cancellation = _stop.Token;
@@ -162,7 +171,8 @@ namespace CS2TwitchCitizens.Mod
                         lock (_gate)
                         {
                             admitted = !_disposed && !_state.Busy;
-                            if (admitted) { _state.Busy = true; _state.Status = ""; }
+                            if (admitted) { _state.Busy = true; _state.Status = "";
+                                _operationGeneration = _connection.SessionGeneration; }
                         }
                         if (admitted) break;
                         await Task.Delay(200, _stop.Token).ConfigureAwait(false);
@@ -210,6 +220,7 @@ namespace CS2TwitchCitizens.Mod
         {
             try
             {
+                EnsureCurrentSession();
                 var access = _connection.RewardAuthorization ?? throw new UnauthorizedAccessException();
                 var client = access.ClientId; var token = access.AccessToken; var broadcaster = access.BroadcasterId;
                 if (_registry.LoadFailed) throw new InvalidDataException("RewardStorageError");
@@ -219,10 +230,17 @@ namespace CS2TwitchCitizens.Mod
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SerializationException)
                 { LogFailure("LoadRecovery", ex, "file_storage"); throw new IOException("Reward recovery storage unavailable.", ex); }
                 if (command.Operation == "Sync")
-                { await SyncAsync(access, cancellation).ConfigureAwait(false); SetStatus("Synced"); return; }
+                {
+                    var epoch = _connection.EventSubRecoveryEpoch;
+                    await SyncAsync(access, cancellation).ConfigureAwait(false);
+                    if (epoch > Volatile.Read(ref _lastReconciledEpoch) && access.CanManage)
+                        await ReconcilePendingAsync(access, epoch, cancellation).ConfigureAwait(false);
+                    SetStatus("Synced"); return;
+                }
                 if (!access.CanManage) throw new UnauthorizedAccessException();
                 var all = await _api.ListAsync(client, token, broadcaster, false, cancellation).ConfigureAwait(false);
                 var owned = await _api.ListAsync(client, token, broadcaster, true, cancellation).ConfigureAwait(false);
+                EnsureCurrentSession();
                 var ids = new HashSet<string>(owned.Select(r => r.Id), StringComparer.Ordinal);
                 if (command.Operation is "FixedEnable" or "FixedDisable" or "FixedCost")
                 {
@@ -249,6 +267,7 @@ namespace CS2TwitchCitizens.Mod
                     { ClearPendingCreate(); throw; }
                     _pendingCreatedId = created.Id;
                     SavePendingCreate();
+                    EnsureCurrentSession();
                     if (_connection.UserId != broadcaster) throw new InvalidDataException("AccountChanged");
                     try { SaveRule(created.Id, command.Action); }
                     catch (Exception ex) { LogFailure("SaveRule", ex, "file_storage"); SetStatus("NeedsSync:" + created.Id); return; }
@@ -264,6 +283,7 @@ namespace CS2TwitchCitizens.Mod
                         throw new InvalidDataException("ServerChangedSyncRequired");
                     var updated = await _api.UpdateAsync(client, token, broadcaster, command.RewardId,
                         command.Edit, cancellation).ConfigureAwait(false);
+                    EnsureCurrentSession();
                     if (updated.Id != command.RewardId) throw new InvalidDataException("RewardMismatch");
                     if (_connection.UserId != broadcaster) throw new InvalidDataException("AccountChanged");
                     if (!string.IsNullOrEmpty(command.Action))
@@ -275,6 +295,7 @@ namespace CS2TwitchCitizens.Mod
                 if (command.Operation == "Delete")
                 {
                     await _api.DeleteAsync(client, token, broadcaster, command.RewardId, cancellation).ConfigureAwait(false);
+                    EnsureCurrentSession();
                     if (_connection.UserId != broadcaster) throw new InvalidDataException("AccountChanged");
                     try
                     {
@@ -290,6 +311,7 @@ namespace CS2TwitchCitizens.Mod
                 {
                     var pending = await _api.ListRedemptionsAsync(client, token, broadcaster,
                         command.RewardId, "UNFULFILLED", cancellation).ConfigureAwait(false);
+                    EnsureCurrentSession();
                     lock (_gate) { _state.SelectedRewardId = command.RewardId; _state.Redemptions = pending; }
                     SetStatus("RedemptionsLoaded"); return;
                 }
@@ -298,6 +320,7 @@ namespace CS2TwitchCitizens.Mod
                     if (_ledger.LoadFailed) throw new InvalidDataException("JournalUnavailable");
                     var existing = await _api.GetRedemptionAsync(client, token, broadcaster, command.RewardId,
                         command.RedemptionId, cancellation).ConfigureAwait(false);
+                    EnsureCurrentSession();
                     if (existing.Id != command.RedemptionId || existing.Reward?.Id != command.RewardId ||
                         existing.BroadcasterId != broadcaster || existing.Status != "UNFULFILLED")
                         throw new InvalidDataException("RedemptionUnavailable");
@@ -345,6 +368,7 @@ namespace CS2TwitchCitizens.Mod
                 false, cancellation).ConfigureAwait(false);
             var owned = access.CanManage ? await _api.ListAsync(access.ClientId, access.AccessToken,
                 access.BroadcasterId, true, cancellation).ConfigureAwait(false) : Array.Empty<TwitchReward>();
+            EnsureCurrentSession();
             if (_connection.UserId != access.BroadcasterId) throw new InvalidDataException("AccountChanged");
             if (!string.IsNullOrEmpty(_pendingCreateTitle))
             {
@@ -387,6 +411,39 @@ namespace CS2TwitchCitizens.Mod
             }
         }
 
+        private async Task ReconcilePendingAsync(TwitchRewardAuthorization access, int epoch,
+            CancellationToken cancellation)
+        {
+            if (_ledger.LoadFailed) throw new InvalidDataException("JournalUnavailable");
+            string[] owned;
+            lock (_gate) owned = _state.ManageableIds.ToArray();
+            var configured = new HashSet<string>(_registry.Current.Rewards.Select(rule => rule.RewardId),
+                StringComparer.Ordinal);
+            var review = 0;
+            foreach (var rewardId in owned.Where(configured.Contains))
+            {
+                var pending = await _api.ListRedemptionsAsync(access.ClientId, access.AccessToken,
+                    access.BroadcasterId, rewardId, "UNFULFILLED", cancellation).ConfigureAwait(false);
+                EnsureCurrentSession();
+                cancellation.ThrowIfCancellationRequested();
+                if (_connection.UserId != access.BroadcasterId ||
+                    _connection.EventSubRecoveryEpoch != epoch ||
+                    _connection.View.EventSubStatus != "Connected")
+                    throw new InvalidDataException("AccountChanged");
+                foreach (var item in pending)
+                {
+                    if (item.BroadcasterId != access.BroadcasterId || item.Reward?.Id != rewardId ||
+                        string.IsNullOrWhiteSpace(item.Id))
+                        throw new InvalidDataException("RedemptionMismatch");
+                }
+                review += _ledger.MarkManualReviewUnknown(access.BroadcasterId,
+                    pending.Select(item => item.Id));
+            }
+            lock (_gate) _state.ReconciliationReview = review;
+            Volatile.Write(ref _lastReconciledEpoch, epoch);
+            if (review > 0) Mod.Log.Info("[Rewards] pending redemptions need manual review count=" + review);
+        }
+
         private async Task ChangeFixedAsync(RewardManagerCommand command, TwitchRewardAuthorization access,
             TwitchReward[] all, TwitchReward[] owned, CancellationToken cancellation)
         {
@@ -420,6 +477,7 @@ namespace CS2TwitchCitizens.Mod
                 { ClearPendingCreate(); throw; }
                 _pendingCreatedId = created.Id;
                 SavePendingCreate();
+                EnsureCurrentSession();
                 if (_connection.UserId != access.BroadcasterId) throw new InvalidDataException("AccountChanged");
                 SaveFixedRule(created.Id, template.Id, true);
                 ClearPendingCreate();
@@ -434,6 +492,7 @@ namespace CS2TwitchCitizens.Mod
                 };
                 var updated = await _api.PatchAsync(access.ClientId, access.AccessToken,
                     access.BroadcasterId, reward.Id, patch, cancellation).ConfigureAwait(false);
+                EnsureCurrentSession();
                 if (updated.Id != reward.Id || patch.Cost.HasValue && updated.Cost != patch.Cost.Value ||
                     patch.IsEnabled.HasValue && updated.IsEnabled != patch.IsEnabled.Value)
                     throw new InvalidDataException("ServerChangedSyncRequired");
@@ -521,7 +580,16 @@ namespace CS2TwitchCitizens.Mod
         }
         private string PendingPath(string broadcasterId) => Path.Combine(_recoveryDirectory,
             broadcasterId + ".json");
-        private void SetStatus(string status) { lock (_gate) _state.Status = status; }
+        private void EnsureCurrentSession()
+        {
+            if (_stop.IsCancellationRequested || _connection.SessionGeneration != _operationGeneration)
+                throw new OperationCanceledException("Twitch session changed.");
+        }
+        private void SetStatus(string status) { lock (_gate)
+        {
+            if (!_disposed && (!_state.Busy || _connection.SessionGeneration == _operationGeneration))
+                _state.Status = status;
+        } }
         private static void LogFailure(string operation, Exception ex, string? reason = null)
         {
             // Operation comes from the UI command; use an allowlist before writing to disk.

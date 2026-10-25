@@ -84,7 +84,7 @@ Check(!TwitchCommandParser.TryParse("!unknown", "12345", "", "", now, out _));
 Check(!TwitchCommandParser.TryParse("!join", " ", "", "", now, out _));
 Check(!TwitchCommandParser.TryParse(null, "12345", "", "", now, out _));
 
-var queue = new TwitchCommandQueue();
+var queue = new TwitchCommandQueue(clock: () => now);
 DevCommandInjector.EnqueueSampleJoin(queue, now);
 TwitchCommand? dev = null;
 Check(TwitchCommandReceiver.Drain(queue, 5, command => dev = command) == 1);
@@ -111,7 +111,7 @@ Check(bindings.GetStatus("viewer-1", key => key == 101, out _) == BindingStatus.
 Check(bindings.GetStatus("viewer-1", _ => false, out var stale) == BindingStatus.Stale);
 Check(stale!.CitizenKey == 101 && bindings.IsCitizenBound(101));
 
-var sequence = new TwitchCommandQueue();
+var sequence = new TwitchCommandQueue(clock: () => now);
 DevCommandInjector.EnqueueSampleSequence(sequence, now);
 var sequenceBindings = new ViewerBindingRegistry<int>();
 var outcomes = new List<string>();
@@ -154,7 +154,7 @@ Check(EventSubProtocol.TryRead(ChatEnvelope("find-1", "!find"), out var findEnve
 Check(EventSubProtocol.TryGetCommand(findEnvelope!, "42", now, out var twitchFind));
 Check(twitchFind!.TwitchUserId == "9001" && twitchFind.Command == "!find");
 
-var incoming = new TwitchCommandQueue();
+var incoming = new TwitchCommandQueue(clock: () => now);
 incoming.Enqueue(twitchJoin);
 incoming.Enqueue(twitchMe);
 var handled = new List<TwitchCommand>();
@@ -381,6 +381,8 @@ var nextLifeCandidate = Candidate();
 Check(lives.TryGet("viewer-a", out var rebornAccount) && rebornAccount!.Current!.Status == ViewerLifeStatus.Active);
 Check(CitizenEligibilityPolicy.Check(nextLifeCandidate) == CitizenRejection.None); // Same selection policy after death.
 Console.WriteLine("PASS: Citizen eligibility policy, visitor/move/home/claim/death/position and no candidate");
+
+StabilityChecks.Run();
 
 static void Check(bool condition)
 {

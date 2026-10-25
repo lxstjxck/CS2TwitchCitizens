@@ -31,6 +31,9 @@ namespace CS2TwitchCitizens.Mod
 
         public Entity FindAvailable(out string diagnostic)
         {
+            var started = StabilityMetrics.Start();
+            try
+            {
             var counts = new Dictionary<CitizenRejection, int>();
             var viewed = 0;
             var chosen = Entity.Null;
@@ -53,6 +56,8 @@ namespace CS2TwitchCitizens.Mod
             }
             diagnostic = $"viewed={viewed} rejected={FormatCounts(counts)} selected={chosen}";
             return chosen;
+            }
+            finally { StabilityMetrics.Search(started); }
         }
 
         public CitizenRejection Check(Entity entity, bool checkClaim, out bool adult)

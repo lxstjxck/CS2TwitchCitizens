@@ -21,6 +21,7 @@ namespace CS2TwitchCitizens.Mod
         private ValueBinding<string> _interactiveSettingsStatus = null!;
         private ValueBinding<string> _rewardManager = null!;
         private DateTime _nextRefresh;
+        private DateTime _nextMetrics;
         private int _focusSequence;
         private string _lastPublishedInteractiveId = "";
         private string? _pendingViewerId;
@@ -72,6 +73,9 @@ namespace CS2TwitchCitizens.Mod
 
         protected override void OnUpdate()
         {
+            var started = StabilityMetrics.Start();
+            try
+            {
             base.OnUpdate();
             if (_pendingViewerId != null)
             {
@@ -102,6 +106,20 @@ namespace CS2TwitchCitizens.Mod
                 Mod.Log.Info("[Interactive] stage=Snapshot result=published");
             _lastPublishedInteractiveId = activeId;
             _rewardManager.Update(Mod.Rewards?.SnapshotJson ?? "{}");
+            }
+            finally
+            {
+                StabilityMetrics.Ui(started);
+                if (StabilityMetrics.Enabled && DateTime.UtcNow >= _nextMetrics)
+                {
+                    _nextMetrics = DateTime.UtcNow.AddMinutes(1);
+                    var queue = Mod.CommandQueue;
+                    Mod.Log.Info(StabilityMetrics.ReadAndReset(queue?.Count ?? 0, queue?.Peak ?? 0,
+                        queue?.Rejected ?? 0, queue?.Expired ?? 0,
+                        Mod.Redemptions?.Count ?? 0,
+                        (Mod.Connection?.ActiveBackgroundTasks ?? 0) + (Mod.Rewards?.ActiveBackgroundTasks ?? 0)));
+                }
+            }
         }
 
         private void UpdateInteractiveSettings(string json)

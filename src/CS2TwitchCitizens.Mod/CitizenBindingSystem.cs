@@ -258,6 +258,9 @@ namespace CS2TwitchCitizens.Mod
 
         protected override void OnUpdate()
         {
+            var started = StabilityMetrics.Start();
+            try
+            {
             if (!_loadReady || _loadFailed) return;
             if (_diagnoseRestoredBindings)
             {
@@ -288,6 +291,8 @@ namespace CS2TwitchCitizens.Mod
 
             if (queue.Count > 0)
                 TwitchCommandReceiver.Drain(queue, MaxCommandsPerUpdate, HandleCommand);
+            }
+            finally { StabilityMetrics.Binding(started); }
         }
 
         private void HandleCommand(TwitchCommand command)

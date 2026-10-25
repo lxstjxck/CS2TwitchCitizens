@@ -186,6 +186,7 @@ public static class JsonData
     {
         using var stream = new MemoryStream();
         new DataContractJsonSerializer(typeof(T)).WriteObject(stream, value);
+        StabilityMetrics.Json(stream.Length > int.MaxValue ? int.MaxValue : (int)stream.Length);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
     public static T Read<T>(string json)
@@ -233,9 +234,43 @@ public sealed class RedemptionLedger
         {
             var key = broadcasterId + ":" + redemptionId;
             if (_states.ContainsKey(key)) return false;
+            WriteBroadcaster(broadcasterId, redemptionId, Received);
             _states.Add(key, Received);
-            WriteBroadcaster(broadcasterId);
             return true;
+        }
+    }
+    /// <summary>Quarantine a redemption found by Helix after an EventSub outage.</summary>
+    public bool TryMarkManualReviewIfUnknown(string broadcasterId, string redemptionId)
+    {
+        if (LoadFailed || !SafeBroadcasterId(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return false;
+        lock (_gate)
+        {
+            var key = broadcasterId + ":" + redemptionId;
+            if (_states.ContainsKey(key)) return false;
+            WriteBroadcaster(broadcasterId, redemptionId, ManualReview);
+            _states.Add(key, ManualReview);
+            return true;
+        }
+    }
+    public int MarkManualReviewUnknown(string broadcasterId, IEnumerable<string> redemptionIds)
+    {
+        if (LoadFailed || !SafeBroadcasterId(broadcasterId))
+            throw new InvalidDataException("Redemption journal unavailable.");
+        var ids = redemptionIds.Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("Invalid redemption ID.");
+        lock (_gate)
+        {
+            var prefix = broadcasterId + ":";
+            var unknown = ids.Where(id => !_states.ContainsKey(prefix + id)).ToArray();
+            if (unknown.Length == 0) return 0;
+            var entries = _states.Where(entry => entry.Key.StartsWith(prefix, StringComparison.Ordinal))
+                .ToDictionary(entry => entry.Key.Substring(prefix.Length), entry => entry.Value, StringComparer.Ordinal);
+            foreach (var id in unknown) entries[id] = ManualReview;
+            var started = StabilityMetrics.Start();
+            try { AtomicJson.Write(Path.Combine(_directory, broadcasterId + ".json"), entries); }
+            finally { StabilityMetrics.Ledger(started); }
+            foreach (var id in unknown) _states.Add(prefix + id, ManualReview);
+            return unknown.Length;
         }
     }
     public void Finish(string broadcasterId, string redemptionId, string result)
@@ -244,8 +279,8 @@ public sealed class RedemptionLedger
         {
             var key = broadcasterId + ":" + redemptionId;
             if (!_states.ContainsKey(key)) return;
+            WriteBroadcaster(broadcasterId, redemptionId, result);
             _states[key] = result;
-            WriteBroadcaster(broadcasterId);
         }
     }
     public void MarkExternalStatus(string broadcasterId, string redemptionId, string status)
@@ -253,20 +288,23 @@ public sealed class RedemptionLedger
         if (LoadFailed || !SafeBroadcasterId(broadcasterId) || string.IsNullOrWhiteSpace(redemptionId)) return;
         lock (_gate)
         {
+            WriteBroadcaster(broadcasterId, redemptionId, status);
             _states[broadcasterId + ":" + redemptionId] = status;
-            WriteBroadcaster(broadcasterId);
         }
     }
     public string? Get(string broadcasterId, string redemptionId)
     {
         lock (_gate) return _states.TryGetValue(broadcasterId + ":" + redemptionId, out var result) ? result : null;
     }
-    private void WriteBroadcaster(string broadcasterId)
+    private void WriteBroadcaster(string broadcasterId, string redemptionId, string state)
     {
+        var started = StabilityMetrics.Start();
         var prefix = broadcasterId + ":";
         var entries = _states.Where(entry => entry.Key.StartsWith(prefix, StringComparison.Ordinal))
             .ToDictionary(entry => entry.Key.Substring(prefix.Length), entry => entry.Value, StringComparer.Ordinal);
-        AtomicJson.Write(Path.Combine(_directory, broadcasterId + ".json"), entries);
+        entries[redemptionId] = state;
+        try { AtomicJson.Write(Path.Combine(_directory, broadcasterId + ".json"), entries); }
+        finally { StabilityMetrics.Ledger(started); }
     }
     private static bool SafeBroadcasterId(string? value) => value != null && !string.IsNullOrWhiteSpace(value) &&
         value.Length <= 128 && value.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_');

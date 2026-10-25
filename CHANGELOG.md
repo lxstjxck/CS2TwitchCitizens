@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.7 — Stability hardening candidate (release package withheld)
+
+- Bounded Twitch command intake to 512 messages, rejected overflow, expired commands older than two minutes, and recorded queue counters. Kept command permissions and viewer cooldowns on the game thread.
+- Reset EventSub reconnect backoff after an established session and repaired socket ownership during Twitch-directed reconnect. Reduced normal command logging and made periodic citizen detail logging diagnostic-only.
+- Added conservative Helix reconciliation of unfulfilled redemptions for configured, manageable rewards after a full EventSub session connects. Unknown redemptions are journaled for manual review; no automatic Twitch confirmation or reward creation is performed.
+- Made RedemptionLedger memory transitions follow successful atomic JSON writes. Added diagnostic timing and volume counters for game updates, citizen search, UI refresh, JSON, ledger writes, queues, and tracked background tasks.
+- Added local burst, queue overflow and expiry, retry-policy recovery, duplicate notification, ledger corruption and write-failure, reward ID persistence, 500-viewer history, and 300,000-candidate policy checks. These do not validate live game or Twitch behavior.
+- Full official package is pending a working ModPostProcessor and runtime regression checks; see `STABILITY_AUDIT_0.9.7.md`.
+
 ## 0.9.6 — In-game notification delivery repair (live visual verification pending)
 
 - Moved notices out of the `GameTopRight` button into a persistent overlay under the supported `Game` UI hook. The button now opens the panel only; the overlay remains mounted when it closes.

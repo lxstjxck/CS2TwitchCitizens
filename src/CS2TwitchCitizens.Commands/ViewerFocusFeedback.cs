@@ -15,6 +15,7 @@ public sealed class ViewerFocusFeedback
     {
         using var stream = new MemoryStream();
         new DataContractJsonSerializer(typeof(ViewerFocusFeedback)).WriteObject(stream, this);
+        StabilityMetrics.Json(stream.Length > int.MaxValue ? int.MaxValue : (int)stream.Length);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
