@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
@@ -38,17 +39,6 @@ namespace CS2TwitchCitizens.Mod
         [DataMember(Name = "fixedRewards")] public FixedRewardView[] FixedRewards { get; set; } = Array.Empty<FixedRewardView>();
         [DataMember(Name = "legacyActive")] public string[] LegacyActive { get; set; } = Array.Empty<string>();
         public string ToJson() => JsonData.Write(this);
-    }
-
-    [DataContract]
-    public sealed class FixedRewardView
-    {
-        [DataMember(Name = "templateId")] public string TemplateId { get; set; } = "";
-        [DataMember(Name = "rewardId")] public string RewardId { get; set; } = "";
-        [DataMember(Name = "cost")] public long Cost { get; set; }
-        [DataMember(Name = "enabled")] public bool Enabled { get; set; }
-        [DataMember(Name = "status")] public string Status { get; set; } = "Missing";
-        [DataMember(Name = "iconUrl")] public string IconUrl { get; set; } = "";
     }
 
     [DataContract]
@@ -119,6 +109,12 @@ namespace CS2TwitchCitizens.Mod
             {
                 if (json.Length > 4096) throw new InvalidDataException();
                 command = JsonData.Read<RewardManagerCommand>(json);
+                if (command == null) throw new InvalidDataException();
+                command.Operation ??= "";
+                command.BroadcasterId ??= "";
+                command.RewardId ??= "";
+                command.RedemptionId ??= "";
+                command.Action ??= "";
             }
             catch { SetStatus("InvalidRequest"); return; }
             if (command.Operation is "Bind" or "Unbind" or "Create" or "Update" or "Delete")
@@ -216,6 +212,7 @@ namespace CS2TwitchCitizens.Mod
             {
                 var access = _connection.RewardAuthorization ?? throw new UnauthorizedAccessException();
                 var client = access.ClientId; var token = access.AccessToken; var broadcaster = access.BroadcasterId;
+                if (_registry.LoadFailed) throw new InvalidDataException("RewardStorageError");
                 if (command.BroadcasterId.Length > 0 && command.BroadcasterId != broadcaster)
                     throw new InvalidDataException("AccountChanged");
                 try { LoadPendingCreate(broadcaster); }
@@ -328,13 +325,14 @@ namespace CS2TwitchCitizens.Mod
             catch (InvalidDataException ex)
             {
                 LogFailure(command.Operation, ex, ex.Message == "CreateRecoveryCorrupt" ? "file_storage" : "invalid_data");
-                SetStatus(ex.Message);
+                SetStatus(ex.Message == "Invalid Twitch reward list." ? "RewardResponseError" : ex.Message);
             }
             catch (Exception ex)
             {
                 var reason = TwitchRewardManager.SafeExceptionReason(ex);
                 LogFailure(command.Operation, ex, reason);
-                SetStatus(reason == "tls" ? "RewardTlsError" : reason == "dns" ? "RewardDnsError" :
+                SetStatus(reason == "internal" ? "RewardInternalError" :
+                    reason == "tls" ? "RewardTlsError" : reason == "dns" ? "RewardDnsError" :
                     reason == "deserialization" ? "RewardResponseError" : reason == "file_storage" ?
                     "RewardStorageError" : "RewardNetworkError");
             }
@@ -364,6 +362,7 @@ namespace CS2TwitchCitizens.Mod
                 catch (Exception ex) { LogFailure("SaveRule", ex, "file_storage"); throw new InvalidDataException("NeedsSync:" + match.Id); }
                 ClearPendingCreate();
             }
+            if (_registry.LoadFailed) throw new InvalidDataException("RewardStorageError");
             var settings = _registry.Current;
             var legacy = settings.Rewards.Where(r => r.Enabled && FixedRewardCatalog.Find(r.Action) == null).ToArray();
             if (legacy.Length > 0)
@@ -371,24 +370,7 @@ namespace CS2TwitchCitizens.Mod
                 foreach (var rule in legacy) rule.Enabled = false;
                 _registry.Update(settings.ToJson());
             }
-            var ownedIds = new HashSet<string>(owned.Select(r => r.Id), StringComparer.Ordinal);
-            var fixedViews = FixedRewardCatalog.All.Select(template =>
-            {
-                var links = settings.Rewards.Where(r => r.Action == template.Id).ToArray();
-                var link = links.Length == 1 ? links[0] : null;
-                var reward = link == null ? null : all.FirstOrDefault(r => r.Id == link.RewardId);
-                var conflict = links.Length > 1 || link != null && (reward == null || !ownedIds.Contains(link.RewardId)) ||
-                    link == null && all.Any(r => r.Title == template.Title);
-                return new FixedRewardView {
-                    TemplateId = template.Id, RewardId = reward?.Id ?? "",
-                    Cost = reward?.Cost ?? template.DefaultCost,
-                    Enabled = reward?.IsEnabled == true && link?.Enabled == true,
-                    Status = conflict ? "Conflict" : reward == null ? "Missing" :
-                        reward.IsEnabled && link?.Enabled == true ? "Synced" : "Disabled",
-                    IconUrl = TwitchRewardCatalog.SafeIcon(reward?.Image?.Url1x) ??
-                        TwitchRewardCatalog.SafeIcon(reward?.DefaultImage?.Url1x) ?? ""
-                };
-            }).ToArray();
+            var fixedViews = FixedRewardProjection.Build(all, owned, settings);
             lock (_gate)
             {
                 _state.BroadcasterId = access.BroadcasterId;
@@ -412,6 +394,7 @@ namespace CS2TwitchCitizens.Mod
             if ((command.Operation == "FixedCost" || command.Operation == "FixedEnable" && command.Cost != 0) &&
                 command.Cost < 1)
                 throw new InvalidDataException("InvalidCost");
+            if (_registry.LoadFailed) throw new InvalidDataException("RewardStorageError");
             var settings = _registry.Current;
             var links = settings.Rewards.Where(r => r.Action == template.Id).ToArray();
             if (links.Length > 1) throw new InvalidDataException("RewardConflict");
@@ -546,7 +529,19 @@ namespace CS2TwitchCitizens.Mod
                 "Create" or "Update" or "Delete" or "Redemptions" or "Fulfill" or "Cancel" or
                 "SaveRule" or "RemoveRule" or "LoadRecovery" or "SaveRecovery" ? operation : "Unknown";
             Mod.Log.Info("[Rewards] controller=" + safeOperation + " result=exception type=" +
-                ex.GetType().Name + " reason=" + (reason ?? TwitchRewardManager.SafeExceptionReason(ex)));
+                ex.GetType().Name + " reason=" + (reason ?? TwitchRewardManager.SafeExceptionReason(ex)) +
+                " frames=" + SafeFrames(ex));
+        }
+        private static string SafeFrames(Exception ex)
+        {
+            var frames = new StackTrace(ex, true).GetFrames();
+            if (frames == null) return "none";
+            return string.Join(",", frames.Take(8).Where(frame =>
+                frame.GetMethod()?.DeclaringType?.FullName?.StartsWith("CS2TwitchCitizens.",
+                    StringComparison.Ordinal) == true).Select(frame =>
+                frame.GetMethod()!.DeclaringType!.Name + "." + frame.GetMethod()!.Name +
+                (frame.GetFileLineNumber() > 0 ? "@" + Path.GetFileName(frame.GetFileName()) +
+                    ":" + frame.GetFileLineNumber() : "")));
         }
         public void Dispose()
         {

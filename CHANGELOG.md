@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.5 — Channel Points response validation and interactive layout (live verification pending)
+
+- Reject malformed Twitch reward lists before sync or creation; a valid empty manageable list remains supported. Block creation when saved reward settings cannot be loaded, and log allowlisted internal stack frames without secrets.
+- Rebuilt the interactive area around Channel Points, Preview, History, and Settings. Two compact reward cards expose a single primary action based on state; pending redemptions now live with event and queue history.
+- Added regression coverage for 11 external rewards with no manageable rewards, a single create request, null and incomplete reward objects, and RU/EN dashboard structure.
+
 ## 0.9.4 — Channel Points diagnostic test update (live verification pending)
 
 - Logged reward GET start, HTTP completion, and result count, including `rewards=0`; `ListAll` and `ListManageable` are separate. Logged existing POST and PATCH attempts without adding requests or changing the uncertain-create guard.

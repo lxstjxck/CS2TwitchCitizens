@@ -29,6 +29,10 @@ public sealed class TwitchRewardManager : IDisposable
         var uri = RewardUri(broadcasterId) + (manageableOnly ? "&only_manageable_rewards=true" : "");
         var data = await SendAsync<TwitchRewardList>(HttpMethod.Get, uri, null, clientId, token, cancellation, true);
         var rewards = data.Data ?? Array.Empty<TwitchReward>();
+        // A malformed list must not be mistaken for an empty, safe-to-create channel.
+        if (data.Data == null || rewards.Any(reward => reward == null ||
+            string.IsNullOrWhiteSpace(reward.Id) || string.IsNullOrWhiteSpace(reward.Title)))
+            throw new InvalidDataException("Invalid Twitch reward list.");
         Log("[Rewards] operation=" + (manageableOnly ? "ListManageable" : "ListAll") +
             " result=complete rewards=" + rewards.Length);
         return rewards;

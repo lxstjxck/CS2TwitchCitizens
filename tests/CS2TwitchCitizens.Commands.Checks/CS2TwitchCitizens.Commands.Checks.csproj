@@ -8,6 +8,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/CS2TwitchCitizens.Commands/CS2TwitchCitizens.Commands.csproj" />
     <ProjectReference Include="../../src/CS2TwitchCitizens.Twitch/CS2TwitchCitizens.Twitch.csproj" />
+    <Compile Include="../../src/CS2TwitchCitizens.Mod/FixedRewardCatalog.cs" Link="FixedRewardCatalog.cs" />
+    <Compile Include="../../src/CS2TwitchCitizens.Mod/FixedRewardProjection.cs" Link="FixedRewardProjection.cs" />
     <Content Include="../fixtures/command-settings-v1.json" Link="fixtures/command-settings-v1.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

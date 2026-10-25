@@ -17,7 +17,15 @@ const localRequire = spec => {
   throw new Error(`Unexpected import: ${spec}`);
 };
 new Function("require", "module", "exports", compiled.outputText)(localRequire, moduleObject, moduleObject.exports);
-const { parseRewardSnapshot, RewardManagerPanel } = moduleObject.exports;
+const { parseRewardSnapshot, RewardManagerPanel, rewardPrimaryCommand } = moduleObject.exports;
+assert.deepEqual(rewardPrimaryCommand("ShowMessage", "Missing", 500),
+  { operation: "FixedEnable", action: "ShowMessage", cost: 500 });
+assert.deepEqual(rewardPrimaryCommand("CityAnnouncement", "Disabled", 1000),
+  { operation: "FixedEnable", action: "CityAnnouncement", cost: 1000 });
+assert.deepEqual(rewardPrimaryCommand("ShowMessage", "Synced", 750),
+  { operation: "FixedCost", action: "ShowMessage", cost: 750 });
+assert.ok(source.includes("onCommand(rewardPrimaryCommand(template.id, state, Number(cost)))"));
+assert.ok(source.includes('operation: "FixedDisable", action: template.id'));
 assert.deepEqual(parseRewardSnapshot("broken").fixedRewards, []);
 assert.deepEqual(parseRewardSnapshot('{"fixedRewards":null}').fixedRewards, []);
 const snapshot = parseRewardSnapshot(JSON.stringify({ broadcasterId: "42", items: [],
@@ -29,10 +37,12 @@ for (const locale of ["ru", "en"]) {
     locale, snapshot, permission: "Allowed", onCommand() {}, onReauthorize() {} }));
   assert.ok(html.includes(locale === "ru" ? "Сообщение в город" : "Message to the city"));
   assert.ok(html.includes(locale === "ru" ? "Городское объявление" : "City announcement"));
-  assert.ok(html.includes("750") && html.includes("1000") && html.includes("old-reward"));
+  assert.ok(html.includes("750") && html.includes("1000") && !html.includes("old-reward"));
   assert.ok(!html.includes("Delete reward") && !html.includes("Color HEX") && !html.includes("Reward ID"));
   assert.ok(!html.includes("access_token") && !html.includes("Bearer"));
   assert.ok(html.includes(locale === "ru" ? "Создать награду" : "Create reward"));
+  assert.equal((html.match(/fixedRewardCard/g) || []).length, 2);
+  assert.ok(!html.includes(locale === "ru" ? "Ожидающие погашения" : "Pending redemptions"));
   assert.ok(!html.includes(locale === "ru" ? "Синхронизировать с Twitch" : "Sync with Twitch"));
   assert.ok(!html.includes(locale === "ru" ? "Сохранить стоимость" : "Save cost"));
   const disabled = { ...snapshot, fixedRewards: snapshot.fixedRewards.map(r => r.templateId === "ShowMessage"
@@ -48,6 +58,7 @@ for (const locale of ["ru", "en"]) {
     ["RewardDnsError", "DNS", "DNS"],
     ["RewardTimeout", "Check your connection", "Проверьте соединение"],
     ["RewardResponseError", "unreadable", "нечитаемый"],
+    ["RewardInternalError", "Could not process", "Не удалось обработать"],
     ["RewardStorageError", "disk access", "доступ к диску"],
     ["HTTP403", "channel eligibility", "доступность функции"],
   ]) {

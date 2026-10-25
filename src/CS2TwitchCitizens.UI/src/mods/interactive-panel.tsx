@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { RewardManagerPanel, RewardSnapshot } from "./reward-manager";
+import { RewardHistory, RewardManagerPanel, RewardSnapshot } from "./reward-manager";
 import { Button } from "cs2/ui";
 import styles from "./twitch-citizens.module.scss";
 import type { Locale } from "./ui-text";
@@ -89,24 +89,26 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
   onTest: (action: string) => void; rewardSnapshot: RewardSnapshot; rewardManagePermission: string;
   connectionState?: string; reauthorizationState?: string;
   onRewardCommand: (command: object) => void; onReauthorize: () => void }) {
-  const [section, setSection] = useState<"messages" | "rewards" | "events" | "queue" | "settings">("messages");
+  const [section, setSection] = useState<"rewards" | "preview" | "history" | "settings">("rewards");
   const update = (change: Partial<InteractiveSettings>) => onSave({ ...config, ...change });
   return <div className={styles.interactivePanel}>
     <div className={styles.interactiveSections}>
-      {(["messages", "rewards", "events", "queue", "settings"] as const).map(name =>
+      {(["rewards", "preview", "history", "settings"] as const).map(name =>
         <Button key={name} variant="default" className={styles.control} selected={section === name}
           data-selected={section === name} onSelect={() => setSection(name)}>
-          {({ messages: label(locale, "Messages", "Сообщения"), rewards: label(locale, "Channel Points", "Баллы канала"),
-            events: label(locale, "Events", "События"), queue: label(locale, "Queue", "Очередь"),
+          {({ preview: label(locale, "Preview", "Предпросмотр"), rewards: label(locale, "Channel Points", "Баллы канала"),
+            history: label(locale, "History", "История"),
             settings: label(locale, "Settings", "Настройки") })[name]}</Button>)}
     </div>
-    {section === "messages" && <div className={styles.interactiveCard}>
-      <strong>{label(locale, "Message previews", "Предпросмотр сообщений")}</strong>
-      <p>{label(locale, "Local tests show sample text in the city without using Twitch or spending points.",
-        "Локальные тесты показывают пример текста в городе без Twitch и списания баллов.")}</p>
-      <div className={styles.interactiveButtons}>{actions.map(action =>
-        <Button key={action} variant="default" className={styles.control} onSelect={() => onTest(action)}>
-          {actionLabel(action, locale)}</Button>)}</div>
+    {section === "preview" && <div className={styles.previewPanel}>
+      <strong>{label(locale, "Preview in your city", "Предпросмотр в городе")}</strong>
+      <p>{label(locale, "Local previews do not spend Channel Points.",
+        "Локальный предпросмотр не расходует баллы канала.")}</p>
+      <div className={styles.interactiveButtons}>
+        <Button variant="default" className={styles.control} onSelect={() => onTest("ShowMessage")}>
+          {label(locale, "Preview message", "Проверить сообщение")}</Button>
+        <Button variant="default" className={styles.control} onSelect={() => onTest("CityAnnouncement")}>
+          {label(locale, "Preview announcement", "Проверить объявление")}</Button></div>
     </div>}
     {section === "settings" && <>
     <strong>{label(locale, "Interactive", "Интерактив")}</strong>
@@ -115,9 +117,6 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
     <div className={styles.settingsRow}><span>{label(locale, "Interactive events", "Интерактивные события")}</span>
       <Button variant="default" className={styles.control} onSelect={() => update({ enabled: !config.enabled })}>
         {config.enabled ? label(locale, "On", "Включено") : label(locale, "Off", "Выключено")}</Button></div>
-    <div className={styles.settingsRow}><span>{label(locale, "Destructive events (future)", "Разрушительные события (позже)")}</span>
-      <Button variant="default" className={styles.control} disabled data-disabled="true">
-        {label(locale, "Unavailable", "Недоступно")}</Button></div>
     <p className={styles.helper}>{label(locale,
       "Create rewards in Channel Points. Redemption confirmation is manual until live testing is complete.",
       "Создавайте награды во вкладке «Баллы канала». Подтверждение погашений остаётся ручным до проверки в игре.")}</p>
@@ -130,22 +129,23 @@ export function InteractivePanel({ locale, state, config, status, pointsStatus, 
       rules={config.rewards} permission={rewardManagePermission} onCommand={onRewardCommand}
       onReauthorize={onReauthorize} onRuleChange={(id, patch) => onSave({ ...config,
         rewards: config.rewards.map(rule => rule.rewardId === id ? { ...rule, ...patch } : rule) })} />}
-    {section === "queue" && <div className={styles.settingsRow}><span>{label(locale, "Queue", "Очередь")}</span><strong>{state.queued}</strong></div>}
-    {section === "queue" && <div className={styles.settingsRow}><span>{label(locale, "Dropped (queue full)", "Пропущено (очередь заполнена)")}</span>
-      <strong>{state.dropped}</strong></div>}
-    {section === "events" && <>
+    {section === "history" && <>
+    <div className={styles.historyMetrics}>
+      <div><span>{label(locale, "Queued", "В очереди")}</span><strong>{state.queued}</strong></div>
+      <div><span>{label(locale, "Missed", "Пропущено")}</span><strong>{state.dropped}</strong></div>
+    </div>
     {state.error && <p className={styles.authError}>{label(locale, "Last result: ", "Последний результат: ")}{state.error}</p>}
     <strong>{label(locale, "Recent events", "Последние события")}</strong>
     {state.events.length === 0 && <p>{label(locale, "No events yet", "Событий пока нет")}</p>}
     {state.events.map(event => <div key={event.id} className={styles.interactiveEvent}>
       <strong>{actionLabel(event.type, locale)}</strong> · {event.displayName || "Twitch"}
-      {event.twitchUserId && <small>Twitch ID: {event.twitchUserId}</small>}
       {event.receivedAt && <small>{event.receivedAt}</small>}
       <small>{event.state}</small>
       {event.localTest && <small> {label(locale, "(local test)", "(локальный тест)")}</small>}
       <p>{event.text}</p>
       <small>{event.result}</small>
     </div>)}
+    <RewardHistory locale={locale} snapshot={rewardSnapshot} onCommand={onRewardCommand} />
     </>}
   </div>;
 }

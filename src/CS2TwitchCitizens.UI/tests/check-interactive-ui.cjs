@@ -43,7 +43,11 @@ for (const locale of ["ru", "en"]) {
   const panel = ReactDOMServer.renderToStaticMarkup(React.createElement(InteractivePanel,
     { locale, config: defaults, state: parseInteractiveState("{}"), status: "",
       pointsStatus: "Disconnected", pointsPermission: "AuthorizationRequired", onSave() {}, onTest() {} }));
-  assert.ok(panel.includes(locale === "ru" ? "Сообщения" : "Messages"));
-  assert.ok(panel.includes(locale === "ru" ? "Локальные тесты" : "Local tests"));
+  assert.ok(panel.includes(locale === "ru" ? "Баллы канала" : "Channel Points"));
+  assert.ok(panel.includes(locale === "ru" ? "Предпросмотр" : "Preview"));
+  assert.ok(panel.includes(locale === "ru" ? "История" : "History"));
+  assert.ok(!panel.includes(locale === "ru" ? "Очередь</button>" : "Queue</button>"));
 }
+assert.ok(source.includes('onTest("ShowMessage")') && source.includes('onTest("CityAnnouncement")'));
+assert.ok(source.includes("<RewardHistory") && source.includes("onCommand={onRewardCommand}"));
 console.log("PASS: interactive defaults, RU/EN panel and safe citizen notice rendering");

@@ -2,9 +2,9 @@
 
 ## Paradox Mods preparation
 
-Version 0.9.3 is a candidate update to the existing Paradox Mods listing (ModId 164740); repository scripts do not publish it automatically. [PUBLISHING.md](PUBLISHING.md) covers the Release build, staged package verification, and updates using the same ModId. [TESTING.md](TESTING.md) is the subscriber test checklist. A registered public Twitch Client ID and an original `Properties/Thumbnail.png` are required before publication. The local development build remains available through `scripts/build-official.ps1`.
+Version 0.9.5 is a candidate update to the existing Paradox Mods listing (ModId 164740); repository scripts do not publish it automatically. [PUBLISHING.md](PUBLISHING.md) covers the Release build, staged package verification, and updates using the same ModId. [TESTING.md](TESTING.md) is the subscriber test checklist. A registered public Twitch Client ID and an original `Properties/Thumbnail.png` are required before publication. The local development build remains available through `scripts/build-official.ps1`.
 
-CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.3 offers two fixed Channel Points rewards: **Message to the city** and **City announcement**. The streamer can enable or disable them and change their point cost. Messages appear at the upper right for eight seconds; announcements appear at the center for at most 30 seconds. Both can be dismissed early. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the reward manager and newer UI still need a live Twitch and in-game check.
+CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.5 offers two fixed Channel Points rewards: **Message to the city** and **City announcement**. The streamer can create, enable or disable them and change their point cost from a compact Channel Points screen. Preview and history have separate sections. Messages appear at the upper right for eight seconds; announcements appear at the center for at most 30 seconds. Both can be dismissed early. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; the reward manager and newer UI still need a live Twitch and in-game check.
 
 ## Channel Points setup
 

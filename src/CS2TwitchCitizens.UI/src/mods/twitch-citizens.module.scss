@@ -99,10 +99,37 @@
 .cityAnnouncement .announcementText { margin: 0; font-size: 21px; line-height: 1.4;
   white-space: pre-wrap; overflow-wrap: anywhere; }
 .cityAnnouncement .control { align-self: center; }
-.fixedRewardCard { gap: 9px; }
-.fixedRewardHeading { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-.fixedRewardCard label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-.fixedRewardCard small { color: #bed5e1; }
+.rewardDashboard { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.rewardDashboardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; min-width: 0; }
+.rewardDashboardHead h3, .interactivePanel h3 { margin: 0 0 3px; font-size: 16px; }
+.rewardDashboardHead p { margin: 0; max-width: 430px; color: #bed0dc; font-size: 11px; line-height: 1.35; }
+.connectionBadge { flex: none; padding: 4px 7px; border: 1px solid #506d7d; border-radius: 4px;
+  color: #c9e4dc; font-size: 10px; white-space: nowrap; }
+.rewardList { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.fixedRewardCard { display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 10px;
+  background: #223d51; border: 1px solid #405d70; border-radius: 6px; }
+.fixedRewardHeading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rewardIdentity { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rewardIdentity strong { font-size: 13px; line-height: 1.2; }
+.rewardIdentity span { color: #b8cedb; font-size: 11px; overflow-wrap: anywhere; }
+.rewardState { flex: none; color: #bedbcc; font-size: 10px; }
+.rewardControls { display: flex; align-items: end; gap: 8px; min-width: 0; }
+.rewardControls label { display: flex; flex-direction: column; gap: 3px; width: 95px; flex: none; font-size: 11px; }
+.rewardControls .search { padding: 5px 7px; text-align: right; }
+.rewardControls .control, .rewardSecondary { min-width: 120px; padding: 6px 9px; font-size: 11px; }
+.rewardSecondary, .rewardRefresh { border: 0; background: transparent; color: #c4d7e2; font-size: 11px; }
+.rewardRefresh { align-self: flex-end; }
+.previewPanel { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid #405d70;
+  background: #223d51; border-radius: 6px; }
+.previewPanel p { margin: 0; color: #bed0dc; }
+.historyMetrics { display: flex; gap: 6px; }
+.historyMetrics div { display: flex; justify-content: space-between; flex: 1; padding: 7px 9px;
+  background: #223d51; border-radius: 5px; }
+@media (max-width: 600px) {
+  .rewardDashboardHead { flex-wrap: wrap; }
+  .rewardControls { flex-wrap: wrap; }
+  .rewardControls .control { flex: 1; }
+}
 .interactiveNotice[data-type="CityCelebration"] { background: rgba(62, 49, 30, .98); }
 .interactiveNotice[data-type="EmergencyAlert"] { background: rgba(69, 35, 34, .98); }
 .interactiveNoticeHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -113,7 +140,7 @@
 .interactiveNotice small { display: block; color: #bbcfdd; }
 .interactivePanel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .interactiveSections { display: flex; flex-wrap: wrap; gap: 4px; }
-.interactiveSections .control { flex: 1 1 26%; font-size: 12px; padding: 5px 3px; }
+.interactiveSections .control { flex: 1 1 22%; font-size: 11px; padding: 5px 3px; }
 .redemptionDetails { display: block; }
 .redemptionDetails summary { cursor: pointer; font-weight: 600; font-size: 12px; }
 .redemptionDetails summary + .interactivePanel { margin-top: 8px; }

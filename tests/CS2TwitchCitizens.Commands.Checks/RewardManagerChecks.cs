@@ -6,6 +6,8 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using CS2TwitchCitizens.Twitch;
+using CS2TwitchCitizens.Commands;
+using CS2TwitchCitizens.Mod;
 
 internal static class RewardManagerChecks
 {
@@ -84,6 +86,45 @@ internal static class RewardManagerChecks
         Check(empty.Requests.Count == 2 && logs.Any(x => x.Contains("operation=ListAll result=start")) &&
             logs.Any(x => x.Contains("operation=ListManageable result=start")) &&
             logs.Count(x => x.Contains("rewards=0")) == 2);
+        var external = new Handler { ElevenExternal = true };
+        using (var externalApi = new TwitchRewardManager(new HttpClient(external)))
+        {
+            var allExternal = await externalApi.ListAsync("client", "token", "42", false, CancellationToken.None);
+            var noneOwned = await externalApi.ListAsync("client", "token", "42", true, CancellationToken.None);
+            Check(allExternal.Length == 11 && noneOwned.Length == 0 &&
+                allExternal.All(reward => reward.Title != "Сообщение в город" &&
+                    reward.Title != "Городское объявление"));
+            var fixedViews = FixedRewardProjection.Build(allExternal, noneOwned, InteractiveSettings.Defaults());
+            Check(fixedViews.Length == 2 && fixedViews.All(view => view.Status == "Missing") &&
+                fixedViews[0].Cost == 500 && fixedViews[1].Cost == 1000);
+            var fixedEdit = new TwitchRewardEdit { Title = "Сообщение в город", Prompt = "Message",
+                Cost = 500, IsUserInputRequired = true };
+            Check((await externalApi.CreateAsync("client", "token", "42", fixedEdit,
+                CancellationToken.None)).Id == "reward-1");
+            Check(external.Requests.Count(r => r.Method == HttpMethod.Post) == 1);
+            var createdReward = new TwitchReward { Id = "reward-1", Title = "Сообщение в город",
+                Cost = 500, IsEnabled = true };
+            var linked = InteractiveSettings.Defaults();
+            linked.Rewards.Add(new RewardRule { RewardId = createdReward.Id, Action = InteractiveAction.ShowMessage });
+            var afterCreate = FixedRewardProjection.Build(allExternal.Append(createdReward).ToArray(),
+                new[] { createdReward }, linked);
+            Check(afterCreate[0].Status == "Synced" && afterCreate[0].RewardId == "reward-1" &&
+                afterCreate[1].Status == "Missing");
+        }
+        foreach (var invalidResponse in new[] { "{\"data\":[null]}",
+            "{\"data\":[{\"id\":\"partial\"}]}" })
+        {
+            var malformed = new Handler { CustomJson = invalidResponse };
+            using var malformedApi = new TwitchRewardManager(new HttpClient(malformed));
+            await Expect<InvalidDataException>(() => malformedApi.ListAsync("client", "token", "42",
+                false, CancellationToken.None));
+            Check(malformed.Requests.Count == 1 && malformed.Requests.All(r => r.Method == HttpMethod.Get));
+        }
+        await Expect<InvalidDataException>(() => Task.Run(() => FixedRewardProjection.Build(
+            new TwitchReward[] { null! }, Array.Empty<TwitchReward>(), InteractiveSettings.Defaults())));
+        var noImages = new Handler { CustomJson = "{\"data\":[{\"id\":\"partial\",\"title\":\"Other\",\"image\":null,\"default_image\":null}]}" };
+        using (var noImagesApi = new TwitchRewardManager(new HttpClient(noImages)))
+            Check((await noImagesApi.ListAsync("client", "token", "42", false, CancellationToken.None)).Length == 1);
         logs.Clear();
         var apiError = new Handler { FailureStatus = HttpStatusCode.Forbidden,
             FailureBody = "{\"message\":\"Missing required scope for user secret-person\"}" };
@@ -142,6 +183,8 @@ internal static class RewardManagerChecks
         public bool Timeout;
         public bool EmptyRewards;
         public bool InvalidJson;
+        public bool ElevenExternal;
+        public string? CustomJson;
         public string? FailureBody;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -169,8 +212,13 @@ internal static class RewardManagerChecks
                     "\",\"reward\":{\"id\":\"reward-1\"}}]" +
                     (PagedRedemptions && id == "redeem-1" ? ",\"pagination\":{\"cursor\":\"next\"}" : "") + "}";
             }
-            else json = InvalidJson ? "{" : EmptyRewards ? "{\"data\":[]}" :
-                "{\"data\":[{\"id\":\"reward-1\",\"title\":\"Notice\",\"cost\":250}]}";
+            else json = CustomJson ?? (InvalidJson ? "{" : ElevenExternal && request.Method == HttpMethod.Post
+                ? "{\"data\":[{\"id\":\"reward-1\",\"title\":\"Сообщение в город\",\"cost\":500}]}" : EmptyRewards ||
+                ElevenExternal && request.RequestUri.Query.Contains("only_manageable_rewards=true")
+                ? "{\"data\":[]}" : ElevenExternal
+                ? "{\"data\":[" + string.Join(",", Enumerable.Range(1, 11).Select(i =>
+                    "{\"id\":\"external-" + i + "\",\"title\":\"Other " + i + "\"}")) + "]}" :
+                "{\"data\":[{\"id\":\"reward-1\",\"title\":\"Notice\",\"cost\":250}]}");
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         }
     }

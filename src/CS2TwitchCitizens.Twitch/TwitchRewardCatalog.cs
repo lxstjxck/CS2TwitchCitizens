@@ -23,7 +23,7 @@ public static class TwitchRewardCatalog
         var data = (RewardList?)new DataContractJsonSerializer(typeof(RewardList)).ReadObject(stream);
         foreach (var reward in data?.Data ?? Array.Empty<RewardInfo>())
         {
-            if (string.IsNullOrWhiteSpace(reward.Id)) continue;
+            if (reward == null || string.IsNullOrWhiteSpace(reward.Id)) continue;
             var image = SafeIcon(reward.Image?.Url1x) ?? SafeIcon(reward.DefaultImage?.Url1x);
             if (image != null) result[reward.Id!] = image;
         }
