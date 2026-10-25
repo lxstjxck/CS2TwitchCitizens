@@ -22,6 +22,7 @@ namespace CS2TwitchCitizens.Mod
         private ValueBinding<string> _rewardManager = null!;
         private DateTime _nextRefresh;
         private DateTime _nextMetrics;
+        private DateTime _nextHeartbeat;
         private int _focusSequence;
         private string _lastPublishedInteractiveId = "";
         private string? _pendingViewerId;
@@ -92,6 +93,17 @@ namespace CS2TwitchCitizens.Mod
             var bindingSystem = gameLoaded ? World.GetExistingSystemManaged<CitizenBindingSystem>() : null;
             var viewers = bindingSystem?.GetAllBindings() ?? Array.Empty<ViewerCitizenInfo>();
             var auth = Mod.Connection?.View ?? new CS2TwitchCitizens.Twitch.TwitchAuthView();
+            if (DateTime.UtcNow >= _nextHeartbeat)
+            {
+                _nextHeartbeat = DateTime.UtcNow.AddMinutes(1);
+                var commandQueue = Mod.CommandQueue;
+                Mod.Log.Info($"[CS2TwitchCitizens] HEALTH cityLoaded={gameLoaded} viewers={viewers.Count} " +
+                    $"eventSub={auth.EventSubStatus} points={auth.ChannelPointsStatus} " +
+                    $"queueDepth={commandQueue?.Count ?? 0} rejected={commandQueue?.Rejected ?? 0} " +
+                    $"expired={commandQueue?.Expired ?? 0} redemptions={Mod.Redemptions?.Count ?? 0} " +
+                    $"tasks={(Mod.Connection?.ActiveBackgroundTasks ?? 0) + (Mod.Rewards?.ActiveBackgroundTasks ?? 0)} " +
+                    $"logDropped={Mod.Log.DroppedCount}");
+            }
             Mod.Rewards?.PollAutomaticSync();
             var snapshot = ViewerPanelSnapshot.Create(auth.EventSubStatus,
                 Mod.Connection?.UserId ?? string.Empty, gameLoaded, viewers);

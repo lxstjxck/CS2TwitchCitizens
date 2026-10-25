@@ -10,7 +10,7 @@ namespace CS2TwitchCitizens.Mod
 {
     public sealed class Mod : IMod
     {
-        internal static readonly ILog Log = LogManager.GetLogger("CS2TwitchCitizens");
+        internal static readonly PersistentModLogger Log = new PersistentModLogger(LogManager.GetLogger("CS2TwitchCitizens"));
         internal static TwitchCommandQueue? CommandQueue { get; private set; }
         internal static TwitchConnectionController? Connection { get; private set; }
         internal static CommandSettingsController? CommandSettings { get; private set; }
@@ -22,13 +22,15 @@ namespace CS2TwitchCitizens.Mod
 
         public void OnLoad(UpdateSystem updateSystem)
         {
+            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CS2TwitchCitizens");
+            Log.StartFileLogging(Path.Combine(directory, "logs"));
+            Log.Info("[CS2TwitchCitizens] START version=0.9.7 persistentLog=enabled");
             CommandQueue = new TwitchCommandQueue();
             Redemptions = new RedemptionQueue();
             updateSystem.UpdateAt<CitizenDiscoverySystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<CitizenBindingSystem>(SystemUpdatePhase.GameSimulation);
             updateSystem.UpdateAt<ViewerPanelUISystem>(SystemUpdatePhase.UIUpdate);
             updateSystem.UpdateAt<CityEventSystem>(SystemUpdatePhase.UIUpdate);
-            var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CS2TwitchCitizens");
             CommandSettings = new CommandSettingsController(new CommandSettingsStore(Path.Combine(directory, "commands.json")));
             InteractiveSettings = new RewardActionRegistry(Path.Combine(directory, "interactive.json"));
             RedemptionLedger = new RedemptionLedger(Path.Combine(directory, "redemptions.json"));
@@ -52,15 +54,63 @@ namespace CS2TwitchCitizens.Mod
 
         public void OnDispose()
         {
-            Rewards?.Dispose();
-            Rewards = null;
-            Connection?.Dispose();
-            Connection = null;
-            CommandSettings = null;
-            CommandQueue = null;
-            Redemptions = null;
-            InteractiveSettings = null;
-            RedemptionLedger = null;
+            try
+            {
+                Rewards?.Dispose();
+                Rewards = null;
+                Connection?.Dispose();
+                Connection = null;
+                CommandSettings = null;
+                CommandQueue = null;
+                Redemptions = null;
+                InteractiveSettings = null;
+                RedemptionLedger = null;
+            }
+            finally
+            {
+                Log.Info("[CS2TwitchCitizens] STOP version=0.9.7");
+                Log.StopFileLogging();
+            }
+        }
+    }
+
+    /// <summary>Retains normal Colossal logging and mirrors sanitized entries to a rotating file.</summary>
+    internal sealed class PersistentModLogger
+    {
+        private readonly ILog _game;
+        private PersistentDiagnosticLog? _file;
+        private int _reportedFailure;
+
+        public PersistentModLogger(ILog game) => _game = game;
+        public long DroppedCount => _file?.Dropped ?? 0;
+        public void StartFileLogging(string directory)
+        {
+            StopFileLogging();
+            try
+            {
+                _file = new PersistentDiagnosticLog(directory);
+                _reportedFailure = 0;
+            }
+            catch (Exception ex)
+            {
+                _game.Info("[CS2TwitchCitizens] Persistent file logger failed to start: " + ex.GetType().Name);
+            }
+        }
+
+        public void Info(string message)
+        {
+            _game.Info(message);
+            var file = System.Threading.Volatile.Read(ref _file);
+            if (file == null) return;
+            file.TryWrite(message);
+            if (file.Failed && System.Threading.Interlocked.Exchange(ref _reportedFailure, 1) == 0)
+                _game.Info("[CS2TwitchCitizens] Persistent file logger disabled after I/O failure");
+        }
+
+        public void StopFileLogging()
+        {
+            var current = System.Threading.Interlocked.Exchange(ref _file, null);
+            current?.Dispose();
         }
     }
 }
