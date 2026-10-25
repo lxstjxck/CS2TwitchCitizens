@@ -13,10 +13,10 @@ Experimental: features and UI behavior are still being tested in live games. Mak
   </LongDescription>
   <Thumbnail Value="Properties/Thumbnail.png" />
   <Tag Value="Code Mod" />
-  <ModVersion Value="0.9.3" />
+  <ModVersion Value="0.9.4" />
   <!-- Verified in the locally installed game's Player.log on 2026-10-24. Recheck before publication. -->
   <GameVersion Value="1.6.*" />
-  <ChangeLog Value="Simplified Channel Points setup with automatic reward checks, one-click creation, clearer permission guidance, and focused reward cards." />
+  <ChangeLog Value="Added privacy-safe Channel Points diagnostics and actionable reward errors. Live Helix verification remains pending." />
   <ExternalLink Type="github" Url="https://github.com/lxstjxck/CS2TwitchCitizens" />
   <AccessLevel Value="Unlisted" />
 </Publish>

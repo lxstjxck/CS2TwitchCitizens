@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using CS2TwitchCitizens.Twitch;
@@ -71,6 +74,54 @@ internal static class RewardManagerChecks
         await Expect<TaskCanceledException>(() => timedOutApi.ListAsync("client", "token", "42", false,
             CancellationToken.None));
         Check(timedOut.Requests.Count == 1);
+        var logs = new List<string>();
+        var empty = new Handler { EmptyRewards = true };
+        using (var loggedApi = new TwitchRewardManager(new HttpClient(empty), logs.Add))
+        {
+            Check((await loggedApi.ListAsync("client", "secret-token", "42", false, CancellationToken.None)).Length == 0);
+            Check((await loggedApi.ListAsync("client", "secret-token", "42", true, CancellationToken.None)).Length == 0);
+        }
+        Check(empty.Requests.Count == 2 && logs.Any(x => x.Contains("operation=ListAll result=start")) &&
+            logs.Any(x => x.Contains("operation=ListManageable result=start")) &&
+            logs.Count(x => x.Contains("rewards=0")) == 2);
+        logs.Clear();
+        var apiError = new Handler { FailureStatus = HttpStatusCode.Forbidden,
+            FailureBody = "{\"message\":\"Missing required scope for user secret-person\"}" };
+        using (var loggedApi = new TwitchRewardManager(new HttpClient(apiError), logs.Add))
+            await Expect<TwitchRewardException>(() => loggedApi.ListAsync("client", "secret-token", "42", false,
+                CancellationToken.None));
+        Check(logs.Any(x => x.Contains("status=403 api=missing_scope")) &&
+            logs.All(x => !x.Contains("secret-token") && !x.Contains("secret-person")));
+        logs.Clear();
+        var badJson = new Handler { InvalidJson = true };
+        using (var loggedApi = new TwitchRewardManager(new HttpClient(badJson), logs.Add))
+            await Expect<Exception>(() => loggedApi.ListAsync("client", "secret-token", "42", false,
+                CancellationToken.None));
+        Check(logs.Any(x => x.Contains("reason=deserialization")));
+        Check(TwitchRewardManager.SafeExceptionReason(new HttpRequestException("private", new AuthenticationException("private"))) == "tls");
+        Check(TwitchRewardManager.SafeExceptionReason(new HttpRequestException("private", new SocketException((int)SocketError.HostNotFound))) == "dns");
+        Check(TwitchRewardManager.SafeExceptionReason(new HttpRequestException("private",
+            new WebException("private", WebExceptionStatus.TrustFailure))) == "tls");
+        Check(TwitchRewardManager.SafeExceptionReason(new WebException("private",
+            WebExceptionStatus.NameResolutionFailure)) == "dns");
+        Check(TwitchRewardManager.SafeExceptionReason(new TaskCanceledException()) == "timeout");
+        Check(TwitchRewardManager.SafeExceptionReason(new IOException("private")) == "file_storage");
+        Check(TwitchRewardManager.SafeExceptionReason(new IOException("private"), networkRequest: true) == "http_transport");
+        logs.Clear();
+        var created = new Handler();
+        using (var loggedApi = new TwitchRewardManager(new HttpClient(created), logs.Add))
+        {
+            await loggedApi.CreateAsync("client", "secret-token", "42", edit, CancellationToken.None);
+            await loggedApi.PatchAsync("client", "secret-token", "42", "reward-1",
+                new TwitchRewardPatch { Cost = 300 }, CancellationToken.None);
+        }
+        Check(created.Requests.Count == 2 && logs.Any(x => x.Contains("operation=Create result=start")) &&
+            logs.Any(x => x.Contains("operation=Patch result=start")) &&
+            logs.All(x => !x.Contains("secret-token") && !x.Contains("Message")));
+        using (var brokenLoggerApi = new TwitchRewardManager(new HttpClient(new Handler()),
+            _ => throw new IOException("logger unavailable")))
+            Check((await brokenLoggerApi.ListAsync("client", "token", "42", false,
+                CancellationToken.None)).Length == 1);
         Console.WriteLine("PASS: Helix reward CRUD, permissions headers, request fields, redemptions, no POST retry");
     }
     private static void Check(bool value) { if (!value) throw new Exception("Reward manager check failed."); }
@@ -89,13 +140,17 @@ internal static class RewardManagerChecks
         public bool PagedRedemptions;
         public HttpStatusCode? FailureStatus;
         public bool Timeout;
+        public bool EmptyRewards;
+        public bool InvalidJson;
+        public string? FailureBody;
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content == null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             Requests.Add(new Request(request.Method, request.RequestUri!, body,
                 request.Headers.GetValues("Client-Id").Single(), request.Headers.Authorization!.ToString()));
             if (Timeout) throw new TaskCanceledException();
-            if (FailureStatus.HasValue) return new HttpResponseMessage(FailureStatus.Value);
+            if (FailureStatus.HasValue) return new HttpResponseMessage(FailureStatus.Value)
+                { Content = new StringContent(FailureBody ?? "{}") };
             if (FailCreate) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
             if (RateLimitOnce && Requests.Count == 1)
             {
@@ -114,7 +169,8 @@ internal static class RewardManagerChecks
                     "\",\"reward\":{\"id\":\"reward-1\"}}]" +
                     (PagedRedemptions && id == "redeem-1" ? ",\"pagination\":{\"cursor\":\"next\"}" : "") + "}";
             }
-            else json = "{\"data\":[{\"id\":\"reward-1\",\"title\":\"Notice\",\"cost\":250}]}";
+            else json = InvalidJson ? "{" : EmptyRewards ? "{\"data\":[]}" :
+                "{\"data\":[{\"id\":\"reward-1\",\"title\":\"Notice\",\"cost\":250}]}";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
         }
     }

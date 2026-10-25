@@ -43,5 +43,19 @@ for (const locale of ["ru", "en"]) {
   const missingPermissions = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
     locale, snapshot, permission: "AuthorizationRequired", onCommand() {}, onReauthorize() {} }));
   assert.ok(missingPermissions.includes(locale === "ru" ? "Обновить разрешения Twitch" : "Update Twitch permissions"));
+  for (const [status, en, ru] of [
+    ["RewardTlsError", "system clock", "время системы"],
+    ["RewardDnsError", "DNS", "DNS"],
+    ["RewardTimeout", "Check your connection", "Проверьте соединение"],
+    ["RewardResponseError", "unreadable", "нечитаемый"],
+    ["RewardStorageError", "disk access", "доступ к диску"],
+    ["HTTP403", "channel eligibility", "доступность функции"],
+  ]) {
+    const errorHtml = ReactDOMServer.renderToStaticMarkup(React.createElement(RewardManagerPanel, {
+      locale, snapshot: { ...snapshot, status, fresh: false }, permission: "Allowed",
+      onCommand() {}, onReauthorize() {} }));
+    assert.ok(errorHtml.includes(locale === "ru" ? ru : en), status + " " + locale);
+    assert.ok(!errorHtml.includes("secret-token"));
+  }
 }
 console.log("PASS: fixed reward cards, prices, migration warning, and no generic editor");

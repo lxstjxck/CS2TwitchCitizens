@@ -67,8 +67,24 @@ const statusText = (locale: Locale, status: string) => {
     Created: ["Reward created in Twitch.", "Награда создана в Twitch."],
   };
   if (messages[status]) return tr(locale, ...messages[status]);
-  if (status.startsWith("HTTP5") || status.startsWith("NetworkOrStorageError"))
-    return tr(locale, "Could not reach Twitch. Try again.", "Не удалось связаться с Twitch. Повторите попытку.");
+  if (status === "RewardStorageError" || status === "CreateRecoveryCorrupt")
+    return tr(locale, "Reward settings could not be saved or read. Check disk access, then restart the game.",
+      "Не удалось прочитать или сохранить настройки наград. Проверьте доступ к диску и перезапустите игру.");
+  if (status === "RewardResponseError")
+    return tr(locale, "Twitch returned an unreadable reward response. Refresh rewards; if it repeats, share the mod log.",
+      "Twitch вернул нечитаемый ответ о наградах. Обновите список; если ошибка повторится, передайте лог мода.");
+  if (status === "RewardTlsError")
+    return tr(locale, "Secure connection to Twitch failed. Check the system clock and network, then refresh rewards.",
+      "Не удалось установить защищённое соединение с Twitch. Проверьте время системы и сеть, затем обновите список.");
+  if (status === "RewardDnsError")
+    return tr(locale, "Twitch address could not be resolved. Check DNS and network access, then refresh rewards.",
+      "Не удалось определить адрес Twitch. Проверьте DNS и сеть, затем обновите список наград.");
+  if (status === "RewardTimeout" || status === "RewardNetworkError" || status.startsWith("HTTP5"))
+    return tr(locale, "Twitch did not complete the reward request. Check your connection and refresh rewards. If creation timed out, check Twitch before trying again.",
+      "Запрос наград Twitch не завершился. Проверьте соединение и обновите список. Если создание прервалось, проверьте награды в Twitch перед повтором.");
+  if (status.startsWith("NetworkOrStorageError"))
+    return tr(locale, "Could not check rewards. Review the mod log, then refresh rewards.",
+      "Не удалось проверить награды. Посмотрите лог мода и обновите список.");
   return tr(locale, "Check the Twitch connection and try again.", "Проверьте соединение с Twitch и повторите попытку.");
 };
 
@@ -138,7 +154,8 @@ export function RewardManagerPanel({ locale, snapshot, permission, connectionSta
         {tr(locale, "Update Twitch permissions", "Обновить разрешения Twitch")}</Button>}</div>}
     {permitted && snapshot.status && snapshot.status !== "Synced" && snapshot.status !== "Checking" &&
       <p className={snapshot.status.startsWith("HTTP") ||
-      snapshot.status.includes("Error") || snapshot.status.includes("Conflict") ? styles.authError : styles.helper}>
+      snapshot.status.includes("Error") || snapshot.status.includes("Timeout") ||
+      snapshot.status.includes("Conflict") ? styles.authError : styles.helper}>
       {statusText(locale, snapshot.status)}</p>}
     {permitted && snapshot.busy && <p role="status">{statusText(locale, "Checking")}</p>}
     {permitted && snapshot.fresh && snapshot.fixedRewards.every(r => r.status === "Missing") &&

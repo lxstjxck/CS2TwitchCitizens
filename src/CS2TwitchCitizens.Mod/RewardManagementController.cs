@@ -86,7 +86,7 @@ namespace CS2TwitchCitizens.Mod
         public RewardManagementController(TwitchConnectionController connection, RewardActionRegistry registry,
             RedemptionLedger ledger, string recoveryDirectory, TwitchRewardManager? api = null)
         { _connection = connection; _registry = registry; _ledger = ledger; _recoveryDirectory = recoveryDirectory;
-            _api = api ?? new TwitchRewardManager(); }
+            _api = api ?? new TwitchRewardManager(log: message => Mod.Log.Info(message)); }
 
         public string SnapshotJson
         {
@@ -218,7 +218,9 @@ namespace CS2TwitchCitizens.Mod
                 var client = access.ClientId; var token = access.AccessToken; var broadcaster = access.BroadcasterId;
                 if (command.BroadcasterId.Length > 0 && command.BroadcasterId != broadcaster)
                     throw new InvalidDataException("AccountChanged");
-                LoadPendingCreate(broadcaster);
+                try { LoadPendingCreate(broadcaster); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SerializationException)
+                { LogFailure("LoadRecovery", ex, "file_storage"); throw new IOException("Reward recovery storage unavailable.", ex); }
                 if (command.Operation == "Sync")
                 { await SyncAsync(access, cancellation).ConfigureAwait(false); SetStatus("Synced"); return; }
                 if (!access.CanManage) throw new UnauthorizedAccessException();
@@ -252,7 +254,7 @@ namespace CS2TwitchCitizens.Mod
                     SavePendingCreate();
                     if (_connection.UserId != broadcaster) throw new InvalidDataException("AccountChanged");
                     try { SaveRule(created.Id, command.Action); }
-                    catch { SetStatus("NeedsSync:" + created.Id); return; }
+                    catch (Exception ex) { LogFailure("SaveRule", ex, "file_storage"); SetStatus("NeedsSync:" + created.Id); return; }
                     await SyncAsync(access, cancellation).ConfigureAwait(false);
                     SetStatus("Created"); return;
                 }
@@ -269,7 +271,7 @@ namespace CS2TwitchCitizens.Mod
                     if (_connection.UserId != broadcaster) throw new InvalidDataException("AccountChanged");
                     if (!string.IsNullOrEmpty(command.Action))
                         try { SaveRule(updated.Id, command.Action); }
-                        catch { SetStatus("NeedsSync:" + updated.Id); return; }
+                        catch (Exception ex) { LogFailure("SaveRule", ex, "file_storage"); SetStatus("NeedsSync:" + updated.Id); return; }
                     await SyncAsync(access, cancellation).ConfigureAwait(false);
                     SetStatus("Updated"); return;
                 }
@@ -281,9 +283,9 @@ namespace CS2TwitchCitizens.Mod
                     {
                         var settings = _registry.Current;
                         settings.Rewards.RemoveAll(r => r.RewardId == command.RewardId);
-                        _registry.Update(settings.ToJson());
+                        PersistRules(settings);
                     }
-                    catch { SetStatus("NeedsSync:" + command.RewardId); return; }
+                    catch (Exception ex) { LogFailure("RemoveRule", ex, "file_storage"); SetStatus("NeedsSync:" + command.RewardId); return; }
                     await SyncAsync(access, cancellation).ConfigureAwait(false);
                     SetStatus("Deleted"); return;
                 }
@@ -320,11 +322,22 @@ namespace CS2TwitchCitizens.Mod
                 }
                 throw new InvalidDataException("InvalidRequest");
             }
-            catch (OperationCanceledException) { SetStatus("Canceled"); }
+            catch (OperationCanceledException ex) { LogFailure(command.Operation, ex); SetStatus(_stop.IsCancellationRequested ? "Canceled" : "RewardTimeout"); }
             catch (TwitchRewardException ex) { SetStatus("HTTP" + ex.StatusCode); }
-            catch (UnauthorizedAccessException) { SetStatus("AuthorizationRequired"); }
-            catch (InvalidDataException ex) { SetStatus(ex.Message); }
-            catch (Exception ex) { SetStatus("NetworkOrStorageError:" + ex.GetType().Name); }
+            catch (UnauthorizedAccessException ex) { LogFailure(command.Operation, ex, "authorization_or_storage"); SetStatus("AuthorizationRequired"); }
+            catch (InvalidDataException ex)
+            {
+                LogFailure(command.Operation, ex, ex.Message == "CreateRecoveryCorrupt" ? "file_storage" : "invalid_data");
+                SetStatus(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                var reason = TwitchRewardManager.SafeExceptionReason(ex);
+                LogFailure(command.Operation, ex, reason);
+                SetStatus(reason == "tls" ? "RewardTlsError" : reason == "dns" ? "RewardDnsError" :
+                    reason == "deserialization" ? "RewardResponseError" : reason == "file_storage" ?
+                    "RewardStorageError" : "RewardNetworkError");
+            }
             finally { lock (_gate) _state.Busy = false; }
         }
 
@@ -348,7 +361,7 @@ namespace CS2TwitchCitizens.Mod
                     if (template == null) SaveRule(match.Id, _pendingCreateAction);
                     else SaveFixedRule(match.Id, _pendingCreateAction, true);
                 }
-                catch { throw new InvalidDataException("NeedsSync:" + match.Id); }
+                catch (Exception ex) { LogFailure("SaveRule", ex, "file_storage"); throw new InvalidDataException("NeedsSync:" + match.Id); }
                 ClearPendingCreate();
             }
             var settings = _registry.Current;
@@ -460,7 +473,7 @@ namespace CS2TwitchCitizens.Mod
             else { existing.Action = action; existing.Enabled = enabled;
                 existing.DisplaySeconds = template.DisplaySeconds; }
             if (enabled) settings.Enabled = true;
-            _registry.Update(settings.ToJson());
+            PersistRules(settings);
         }
 
         private void SaveRule(string rewardId, string action)
@@ -471,7 +484,13 @@ namespace CS2TwitchCitizens.Mod
             var existing = settings.Rewards.FirstOrDefault(r => r.RewardId == rewardId);
             if (existing == null) settings.Rewards.Add(new RewardRule { RewardId = rewardId, Action = action });
             else existing.Action = action;
-            _registry.Update(settings.ToJson());
+            PersistRules(settings);
+        }
+        private void PersistRules(InteractiveSettings settings)
+        {
+            try { _registry.Update(settings.ToJson()); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SerializationException)
+            { throw new IOException("Reward settings storage unavailable.", ex); }
         }
         private static bool Matches(TwitchReward actual, TwitchRewardEdit expected)
         {
@@ -510,12 +529,25 @@ namespace CS2TwitchCitizens.Mod
             _pendingCreateAction = record?.Action ?? "";
             _pendingCreatedId = record?.RewardId ?? "";
         }
-        private void SavePendingCreate() => AtomicJson.Write(PendingPath(_pendingBroadcasterId),
-            new PendingRewardCreate { Title = _pendingCreateTitle, Action = _pendingCreateAction,
-                RewardId = _pendingCreatedId });
+        private void SavePendingCreate()
+        {
+            try { AtomicJson.Write(PendingPath(_pendingBroadcasterId),
+                new PendingRewardCreate { Title = _pendingCreateTitle, Action = _pendingCreateAction,
+                    RewardId = _pendingCreatedId }); }
+            catch (Exception ex) { LogFailure("SaveRecovery", ex, "file_storage"); throw new IOException("Reward recovery storage unavailable.", ex); }
+        }
         private string PendingPath(string broadcasterId) => Path.Combine(_recoveryDirectory,
             broadcasterId + ".json");
         private void SetStatus(string status) { lock (_gate) _state.Status = status; }
+        private static void LogFailure(string operation, Exception ex, string? reason = null)
+        {
+            // Operation comes from the UI command; use an allowlist before writing to disk.
+            var safeOperation = operation is "Sync" or "FixedEnable" or "FixedDisable" or "FixedCost" or
+                "Create" or "Update" or "Delete" or "Redemptions" or "Fulfill" or "Cancel" or
+                "SaveRule" or "RemoveRule" or "LoadRecovery" or "SaveRecovery" ? operation : "Unknown";
+            Mod.Log.Info("[Rewards] controller=" + safeOperation + " result=exception type=" +
+                ex.GetType().Name + " reason=" + (reason ?? TwitchRewardManager.SafeExceptionReason(ex)));
+        }
         public void Dispose()
         {
             Task[] tasks;

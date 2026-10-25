@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
+using System.Security.Authentication;
 using System.Text;
 
 namespace CS2TwitchCitizens.Twitch;
@@ -13,10 +15,12 @@ public sealed class TwitchRewardManager : IDisposable
     private const string Endpoint = "https://api.twitch.tv/helix/channel_points/custom_rewards";
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
-    public TwitchRewardManager(HttpClient? http = null)
+    private readonly Action<string>? _log;
+    public TwitchRewardManager(HttpClient? http = null, Action<string>? log = null)
     {
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromSeconds(12) };
         _ownsHttp = http == null;
+        _log = log;
     }
 
     public async Task<TwitchReward[]> ListAsync(string clientId, string token, string broadcasterId,
@@ -24,7 +28,10 @@ public sealed class TwitchRewardManager : IDisposable
     {
         var uri = RewardUri(broadcasterId) + (manageableOnly ? "&only_manageable_rewards=true" : "");
         var data = await SendAsync<TwitchRewardList>(HttpMethod.Get, uri, null, clientId, token, cancellation, true);
-        return data.Data ?? Array.Empty<TwitchReward>();
+        var rewards = data.Data ?? Array.Empty<TwitchReward>();
+        Log("[Rewards] operation=" + (manageableOnly ? "ListManageable" : "ListAll") +
+            " result=complete rewards=" + rewards.Length);
+        return rewards;
     }
 
     public async Task<TwitchReward> CreateAsync(string clientId, string token, string broadcasterId,
@@ -135,8 +142,15 @@ public sealed class TwitchRewardManager : IDisposable
     {
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(token))
             throw new UnauthorizedAccessException("Twitch authorization required.");
+        var operation = uri.StartsWith(Endpoint + "?", StringComparison.Ordinal) ?
+            method == HttpMethod.Get ? (uri.Contains("only_manageable_rewards=true") ? "ListManageable" : "ListAll") :
+            method == HttpMethod.Post ? "Create" : method.Method == "PATCH" ? "Patch" : "Other" : "Redemption";
         for (var attempt = 0; ; attempt++)
         {
+            if (operation != "Other" && operation != "Redemption")
+                Log("[Rewards] operation=" + operation + " result=start attempt=" + (attempt + 1));
+            try
+            {
             using var request = new HttpRequestMessage(method, uri);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             request.Headers.Add("Client-Id", clientId);
@@ -147,6 +161,15 @@ public sealed class TwitchRewardManager : IDisposable
                 request.Content = new StringContent(Encoding.UTF8.GetString(stream.ToArray()), Encoding.UTF8, "application/json");
             }
             using var response = await _http.SendAsync(request, cancellation).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                var safeMessage = await SafeApiMessageAsync(response).ConfigureAwait(false);
+                Log("[Rewards] operation=" + operation + " result=http_error status=" +
+                    (int)response.StatusCode + " api=" + safeMessage);
+                if (!((response.StatusCode == (HttpStatusCode)429 || (int)response.StatusCode >= 500) &&
+                    retryRead && attempt == 0))
+                    throw new TwitchRewardException((int)response.StatusCode);
+            }
             if ((response.StatusCode == (HttpStatusCode)429 || (int)response.StatusCode >= 500) &&
                 retryRead && attempt == 0)
             {
@@ -155,16 +178,81 @@ public sealed class TwitchRewardManager : IDisposable
                 await Task.Delay(delay, cancellation).ConfigureAwait(false);
                 continue;
             }
-            if (!response.IsSuccessStatusCode)
-                throw new TwitchRewardException((int)response.StatusCode);
             if (noContent) return default!;
             using var content = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            return (T?)new DataContractJsonSerializer(typeof(T)).ReadObject(content)
+            var value = (T?)new DataContractJsonSerializer(typeof(T)).ReadObject(content)
                 ?? throw new InvalidDataException("Empty Twitch response.");
+            if (operation != "Other" && operation != "Redemption")
+                Log("[Rewards] operation=" + operation + " result=http_ok status=" + (int)response.StatusCode);
+            return value;
+            }
+            catch (TwitchRewardException) { throw; }
+            catch (Exception ex)
+            {
+                Log("[Rewards] operation=" + operation + " result=exception type=" +
+                    ex.GetType().Name + " reason=" + SafeExceptionReason(ex, cancellation, true));
+                throw;
+            }
         }
+    }
+    private static async Task<string> SafeApiMessageAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            if (response.Content == null) return "unavailable";
+            using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            var buffer = new byte[4096];
+            var count = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+            using var input = new MemoryStream(buffer, 0, count);
+            var error = (TwitchApiError?)new DataContractJsonSerializer(typeof(TwitchApiError)).ReadObject(input);
+            var message = error?.Message?.ToLowerInvariant() ?? "";
+            // Only fixed labels leave this method. Twitch response text may contain user data.
+            if (message.Contains("scope")) return "missing_scope";
+            if (message.Contains("broadcaster")) return "broadcaster_rejected";
+            if (message.Contains("affiliate") || message.Contains("partner") || message.Contains("channel points"))
+                return "channel_points_unavailable";
+            if (message.Contains("already exists") || message.Contains("duplicate")) return "reward_conflict";
+            if (message.Contains("rate limit")) return "rate_limited";
+            return "unclassified";
+        }
+        catch { return "unavailable"; }
+    }
+    public static string SafeExceptionReason(Exception ex, CancellationToken cancellation = default,
+        bool networkRequest = false)
+    {
+        if (ex is OperationCanceledException) return cancellation.IsCancellationRequested ? "canceled" : "timeout";
+        for (var cause = ex; cause != null; cause = cause.InnerException)
+        {
+            if (cause is AuthenticationException) return "tls";
+            if (cause is SocketException socket) return socket.SocketErrorCode is
+                SocketError.HostNotFound or SocketError.NoData ? "dns" : "network";
+            if (cause is WebException web)
+            {
+                if (web.Status is WebExceptionStatus.NameResolutionFailure or
+                    WebExceptionStatus.ProxyNameResolutionFailure) return "dns";
+                if (web.Status is WebExceptionStatus.SecureChannelFailure or WebExceptionStatus.TrustFailure)
+                    return "tls";
+                if (web.Status == WebExceptionStatus.Timeout) return "timeout";
+                return "http_transport";
+            }
+        }
+        if (ex is HttpRequestException) return "http_transport";
+        if (ex is SerializationException || ex is InvalidDataException) return "deserialization";
+        if (ex is IOException || ex is UnauthorizedAccessException)
+            return networkRequest ? "http_transport" : "file_storage";
+        return "internal";
+    }
+    private void Log(string message)
+    {
+        try { _log?.Invoke(message); }
+        catch { /* Diagnostics must never change the reward operation. */ }
     }
     public void Dispose() { if (_ownsHttp) _http.Dispose(); }
 }
+
+[DataContract]
+internal sealed class TwitchApiError
+{ [DataMember(Name = "message")] public string? Message { get; set; } }
 
 public sealed class TwitchRewardException : Exception
 {

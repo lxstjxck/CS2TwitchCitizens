@@ -1,9 +1,9 @@
-# Subscriber test: CS2 Twitch Citizens 0.9.3
+# Subscriber test: CS2 Twitch Citizens 0.9.4
 
 Use a backup of the city. The mod is experimental. Real fires, floods and other Twitch-triggered disasters are not implemented.
 
 1. From a separate test account, subscribe to the exact Paradox Mods listing link supplied by the author. In the game, open the mod manager and enable **CS2 Twitch Citizens** in the active playset. Restart if requested. If an Unlisted link is unavailable or unsubscribable, report that result; the access mode is not yet verified.
-2. Check the installed mod's page and game log for version **0.9.3**. Confirm the code mod and UI load as one listing. On the developer machine, close the game and use `./scripts/toggle-local-mod.ps1 -Action Disable` before testing the subscription, then `-Action Restore` afterward. Inspect local folders first and never delete settings or saves.
+2. Check the installed mod's page and game log for version **0.9.4**. Confirm the code mod and UI load as one listing. On the developer machine, close the game and use `./scripts/toggle-local-mod.ps1 -Action Disable` before testing the subscription, then `-Action Restore` afterward. Inspect local folders first and never delete settings or saves.
 3. Open a copy of a city, then open **Twitch Citizens → Settings → Connect Twitch**. Enter the Device Code at Twitch's authorization page and grant the requested chat and Channel Points scopes. Confirm that connection succeeds and can reconnect after a network interruption. Do not send codes, tokens, or credential files in bug reports.
 4. In the connected channel, test `!join`, `!me`, `!find`, and `!history` with a viewer account. Confirm a valid citizen is bound, tracking and replies work, and the same binding returns after saving and reloading the city. Check the command settings tab in both English and Russian.
 5. In **Interactive → Channel Points**, wait for the automatic check, then create the two fixed rewards. Test **Message to the city** and **City announcement** separately with actual Channel Points redemptions. Verify the upper-right and centered presentations, text, dismissal, pending redemptions, fulfillment and cancellation/refund behavior. Check an enabled/disabled transition and a cost change. Local test buttons check rendering only and do not prove live Twitch delivery.
@@ -11,3 +11,7 @@ Use a backup of the city. The mod is experimental. Real fires, floods and other 
 7. To disable the mod, remove it from the playset or unsubscribe, then restart the game. Keep the city save and `%LOCALAPPDATA%/CS2TwitchCitizens/` user data for troubleshooting unless you intentionally want to erase your own settings.
 
 Please report whether the UI module and bindings actually loaded from the subscribed package. Local Release build and hash verification are separate checks and cannot establish this result.
+
+## 0.9.4 Channel Points diagnostic check
+
+With the broadcaster account connected, refresh Channel Points once. In `CS2TwitchCitizens.log`, check for `operation=ListAll`, `operation=ListManageable`, HTTP status, and `rewards=0` if the channel has no rewards. Try creating one fixed reward only after a successful empty sync. Check Twitch before repeating a failed create; the mod preserves its uncertain-create recovery record. Share only redacted log excerpts. A local mock test or build does not confirm live Helix access.

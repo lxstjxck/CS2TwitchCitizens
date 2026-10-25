@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.4 — Channel Points diagnostic test update (live verification pending)
+
+- Logged reward GET start, HTTP completion, and result count, including `rewards=0`; `ListAll` and `ListManageable` are separate. Logged existing POST and PATCH attempts without adding requests or changing the uncertain-create guard.
+- Recorded reward HTTP status and allowlisted Twitch error categories. TLS, DNS, timeout, transport, response parsing, and local recovery storage failures now have distinct safe diagnostic labels. Tokens, identifiers, reward text, and raw Twitch responses are excluded from these diagnostics.
+- Added targeted UI recovery guidance and C#/UI regression checks. A real broadcaster Helix response and reward creation still require in-game verification.
+
 ## 0.9.3 — Channel Points setup and reward card redesign (live verification pending)
 
 - Renamed the Interactive reward tab to Channel Points in English and Russian and simplified the setup guidance.
