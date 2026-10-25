@@ -22,6 +22,7 @@ namespace CS2TwitchCitizens.Mod
         private ValueBinding<string> _rewardManager = null!;
         private DateTime _nextRefresh;
         private int _focusSequence;
+        private string _lastPublishedInteractiveId = "";
         private string? _pendingViewerId;
 
         protected override void OnCreate()
@@ -94,7 +95,12 @@ namespace CS2TwitchCitizens.Mod
             _auth.Update(auth.ToJson());
             _commandSettings.Update((Mod.CommandSettings?.Current ?? CommandSettings.Defaults()).ToJson());
             _interactiveSettings.Update((Mod.InteractiveSettings?.Current ?? InteractiveSettings.Defaults()).ToJson());
-            _interactive.Update(World.GetExistingSystemManaged<CityEventSystem>()?.SnapshotJson ?? "{}");
+            var events = World.GetExistingSystemManaged<CityEventSystem>();
+            var activeId = events?.ActiveId ?? "";
+            _interactive.Update(events?.SnapshotJson ?? "{}");
+            if (activeId.Length > 0 && activeId != _lastPublishedInteractiveId)
+                Mod.Log.Info("[Interactive] stage=Snapshot result=published");
+            _lastPublishedInteractiveId = activeId;
             _rewardManager.Update(Mod.Rewards?.SnapshotJson ?? "{}");
         }
 
@@ -117,6 +123,9 @@ namespace CS2TwitchCitizens.Mod
 
         private void TestInteractive(string action)
         {
+            Mod.Log.Info("[Interactive] source=Preview action=" +
+                (action is InteractiveAction.ShowMessage or InteractiveAction.CityAnnouncement ? action : "Invalid") +
+                " result=received");
             World.GetExistingSystemManaged<CityEventSystem>()?.Test(action);
             _nextRefresh = DateTime.MinValue;
         }

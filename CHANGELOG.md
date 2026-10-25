@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.6 — In-game notification delivery repair (live visual verification pending)
+
+- Moved notices out of the `GameTopRight` button into a persistent overlay under the supported `Game` UI hook. The button now opens the panel only; the overlay remains mounted when it closes.
+- Allowed local previews during gameplay without requiring citizen bindings or Twitch connectivity. Twitch redemptions still wait for a city ready state and retain the existing ledger and Reward IDs.
+- Added privacy-safe diagnostics for preview and EventSub intake, queueing, policy, snapshot publication, visible-layout acknowledgement and missing acknowledgements. Acknowledgement now follows a Gameface layout and screen-bounds check; automatic Twitch fulfillment is disabled pending live visual validation.
+- Added presentation queue, timeout, acknowledgement, RU/EN, overlay registration and visibility regression checks. The two existing Twitch rewards are preserved.
+- Kept `!join`, `!me`, `!find`, and `!history` as single text nodes and gave command tabs enough width to prevent Gameface from breaking names after `!`; descriptions still wrap normally.
+
 ## 0.9.5 — Channel Points response validation and interactive layout (live verification pending)
 
 - Reject malformed Twitch reward lists before sync or creation; a valid empty manageable list remains supported. Block creation when saved reward settings cannot be loaded, and log allowlisted internal stack frames without secrets.

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { RewardHistory, RewardManagerPanel, RewardSnapshot } from "./reward-manager";
 import { Button } from "cs2/ui";
 import styles from "./twitch-citizens.module.scss";
 import type { Locale } from "./ui-text";
+import { noticeIsVisible } from "./notice-visibility";
 
 export type InteractiveEvent = {
   id: string; type: string; twitchUserId: string; displayName: string; redemptionId: string;
@@ -49,9 +50,28 @@ const actionLabel = (action: string, locale: Locale) => ({
 
 export function InteractiveNotice({ event, locale, onDismiss, onFind, onShown }: { event: InteractiveEvent | null;
   locale: Locale; onDismiss: () => void; onFind: (id: string) => void; onShown: (id: string) => void }) {
-  useEffect(() => { if (event?.id) onShown(event.id); }, [event?.id]);
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!event?.id) return;
+    let canceled = false;
+    let frame = 0;
+    let handle = 0;
+    const check = () => {
+      if (canceled) return;
+      frame++;
+      if (frame >= 3 && frame % 10 === 3 && noticeRef.current &&
+        noticeIsVisible(noticeRef.current, window.innerWidth, window.innerHeight,
+          node => window.getComputedStyle(node))) {
+        onShown(event.id);
+        return;
+      }
+      handle = window.requestAnimationFrame(check);
+    };
+    handle = window.requestAnimationFrame(check);
+    return () => { canceled = true; window.cancelAnimationFrame(handle); };
+  }, [event?.id, onShown]);
   if (!event) return null;
-  if (event.type === "CityAnnouncement") return <div className={styles.cityAnnouncement}
+  if (event.type === "CityAnnouncement") return <div ref={noticeRef} className={styles.cityAnnouncement}
       role="status" data-type={event.type}>
     <div className={styles.interactiveNoticeHead}>
       <strong><span className={styles.rewardMark} aria-hidden="true">◈</span>
@@ -65,7 +85,7 @@ export function InteractiveNotice({ event, locale, onDismiss, onFind, onShown }:
     <Button variant="default" className={styles.control} onSelect={onDismiss}>
       {label(locale, "Close announcement", "Закрыть объявление")}</Button>
   </div>;
-  return <div className={styles.interactiveNotice} role="status" data-type={event.type}>
+  return <div ref={noticeRef} className={styles.interactiveNotice} role="status" data-type={event.type}>
     <div className={styles.interactiveNoticeHead}>
       <strong><span className={styles.rewardMark} aria-hidden="true">★</span>
         {event.rewardIconUrl?.startsWith("https://static-cdn.jtvnw.net/") &&

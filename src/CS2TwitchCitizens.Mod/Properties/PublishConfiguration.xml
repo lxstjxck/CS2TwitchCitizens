@@ -13,10 +13,10 @@ Experimental: features and UI behavior are still being tested in live games. Mak
   </LongDescription>
   <Thumbnail Value="Properties/Thumbnail.png" />
   <Tag Value="Code Mod" />
-  <ModVersion Value="0.9.5" />
+  <ModVersion Value="0.9.6" />
   <!-- Verified in the locally installed game's Player.log on 2026-10-24. Recheck before publication. -->
   <GameVersion Value="1.6.*" />
-  <ChangeLog Value="Validated Channel Points responses and redesigned reward, preview, and history screens. Live Helix verification remains pending." />
+  <ChangeLog Value="Moved in-game notices to a persistent Game overlay, repaired local preview gating, and added event delivery diagnostics. Live display verification remains pending." />
   <ExternalLink Type="github" Url="https://github.com/lxstjxck/CS2TwitchCitizens" />
   <AccessLevel Value="Unlisted" />
 </Publish>

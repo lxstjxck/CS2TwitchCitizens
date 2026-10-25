@@ -25,7 +25,8 @@ function load(name) {
     if (spec === "react-dom/server") return ReactDOMServer;
     if (spec === "cs2/api") return mockApi;
     if (spec === "cs2/ui") return mockUi;
-    if (spec.endsWith(".module.scss")) return new Proxy({}, { get: (_, key) => String(key) });
+    if (spec.endsWith(".module.scss")) return { __esModule: true,
+      default: new Proxy({}, { get: (_, key) => String(key) }) };
     if (spec.startsWith("./")) return load(spec.slice(2));
     throw new Error(`Unexpected import ${spec}`);
   };
@@ -68,6 +69,19 @@ for (const raw of cases) {
     }
   }
 }
+
+for (const locale of ["ru", "en"]) for (const name of ["join", "me", "find", "history"])
+  for (const enabled of [true, false]) {
+    const config = { ...defaults, [name]: { ...defaults[name], enabled } };
+    const html = ReactDOMServer.renderToStaticMarkup(React.createElement(CommandEditor,
+      { config, recovered: false, locale, initialCommand: name }));
+    assert.ok(html.includes(`<strong class="commandName">!${name}</strong>`));
+    for (const tabName of ["join", "me", "find", "history"])
+      assert.ok(html.includes(`<span class="commandTabName">!${tabName}</span>`));
+    const stateText = locale === "ru" ? (enabled ? "Включена" : "Выключена") :
+      (enabled ? "Enabled" : "Disabled");
+    assert.ok(html.includes(`<span class="commandState" data-enabled="${enabled}">${stateText}</span>`));
+  }
 
 assert.deepEqual(safeFieldGroups("me", undefined), safeFieldGroups("me"));
 assert.deepEqual(safeFieldGroups("me", null), []);
@@ -145,9 +159,16 @@ for (let i = 0; i < 24; i++) {
 
 const editorSource = fs.readFileSync(path.join(sourceDir, "command-editor.tsx"), "utf8");
 const editorCss = fs.readFileSync(path.join(sourceDir, "twitch-citizens.module.scss"), "utf8");
-assert.match(editorSource, /className=\{styles\.commandTabName\}>!\{name\}<\/span>/);
+assert.ok(editorSource.includes('<span className={styles.commandTabName}>{`!${name}`}</span>'));
+assert.ok(editorSource.includes('<strong className={styles.commandName}>{`!${selected}`}</strong>'));
 assert.doesNotMatch(editorSource, /✓/);
-assert.match(editorCss, /\.commandTabName\s*\{[^}]*white-space:\s*nowrap/s);
+const nameRules = editorCss.match(/\.commandName, \.commandTabName\s*\{([^}]*)\}/)?.[1] || "";
+for (const rule of [/display:\s*inline-block/, /white-space:\s*nowrap/,
+  /overflow-wrap:\s*normal/, /word-break:\s*keep-all/, /flex-shrink:\s*0/])
+  assert.match(nameRules, rule);
+assert.match(editorCss, /\.panel \.commandTab\s*\{[^}]*flex:\s*1 0 84px;[^}]*min-width:\s*84px/s);
+assert.match(editorCss, /\.commandTitle\s*\{\s*flex-wrap:\s*wrap;/);
+assert.match(editorCss, /\.commandState\s*\{[^}]*white-space:\s*nowrap;/s);
 assert.match(editorCss, /\.commandToggle\[data-selected="true"\] \.toggleMark:after\s*\{[^}]*border-right:[^}]*border-bottom:/s);
 assert.match(editorCss, /\.panel \.permissionButton\s*\{[^}]*justify-content:\s*flex-start/s);
 assert.match(editorCss, /\.commandSection:last-child\s*\{[^}]*padding-bottom:\s*0/s);

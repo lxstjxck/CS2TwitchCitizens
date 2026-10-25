@@ -49,6 +49,43 @@ internal static class InteractiveChecks
         Check(queue.Count == 2 && queue.TryDequeue(out _) && queue.Count == 1);
         queue.Clear();
         Check(queue.Count == 0);
+        var displayClock = DateTimeOffset.UtcNow;
+        var presentation = new InteractivePresentationQueue();
+        var previewMessage = new CityEventRecord { Id = "preview-message", Type = InteractiveAction.ShowMessage,
+            LocalTest = true, Text = "Preview" };
+        var previewAnnouncement = new CityEventRecord { Id = "preview-announcement",
+            Type = InteractiveAction.CityAnnouncement, LocalTest = true, Text = "Preview announcement" };
+        Check(presentation.TryEnqueue(previewMessage) && presentation.TryEnqueue(previewAnnouncement));
+        Check(presentation.NeedsAdvance(displayClock) && presentation.Advance(displayClock) == null &&
+            presentation.Active?.Id == "preview-message" &&
+            presentation.Active.State == "AwaitingDisplay" && presentation.PendingCount == 1);
+        Check(!presentation.Acknowledge("wrong", displayClock) &&
+            !presentation.NeedsAdvance(displayClock.AddSeconds(8)));
+        Check(presentation.Acknowledge("preview-message", displayClock.AddSeconds(2)) &&
+            !presentation.Acknowledge("preview-message", displayClock.AddSeconds(2)) &&
+            !presentation.NeedsAdvance(displayClock.AddSeconds(9)) &&
+            presentation.NeedsAdvance(displayClock.AddSeconds(10)));
+        Check(presentation.Advance(displayClock.AddSeconds(10)) == previewMessage &&
+            presentation.Active?.Id == "preview-announcement" && previewMessage.State == "Completed");
+        Check(presentation.Acknowledge("preview-announcement", displayClock.AddSeconds(11)) &&
+            !presentation.NeedsAdvance(displayClock.AddSeconds(40)) &&
+            presentation.NeedsAdvance(displayClock.AddSeconds(41)));
+        Check(presentation.Advance(displayClock.AddSeconds(41)) == previewAnnouncement &&
+            presentation.Active == null);
+        var hiddenRedemption = new CityEventRecord { Id = "redemption", Type = InteractiveAction.ShowMessage,
+            RedemptionId = "redeem-1" };
+        Check(presentation.TryEnqueue(hiddenRedemption));
+        presentation.Advance(displayClock);
+        Check(hiddenRedemption.State == "AwaitingDisplay" &&
+            presentation.NeedsAdvance(displayClock.AddSeconds(30)) &&
+            !presentation.Acknowledge("wrong", displayClock.AddSeconds(1)));
+        var removed = presentation.Reset();
+        Check(removed.Length == 1 && removed[0] == hiddenRedemption && presentation.Active == null);
+        var canceled = new CityEventRecord { Id = "canceled", RedemptionId = "redeem-2",
+            Type = InteractiveAction.CityAnnouncement };
+        Check(presentation.TryEnqueue(canceled));
+        presentation.RemoveRedemption("redeem-2");
+        Check(presentation.PendingCount == 0 && presentation.Active == null);
         using (var snapshot = JsonDocument.Parse(new CityEventSnapshot { Queued = 2, Dropped = 1,
             Active = new CityEventRecord { Id = "local-1", Type = InteractiveAction.CityAnnouncement,
                 Text = "Город празднует", LocalTest = true } }.ToJson()))
@@ -81,6 +118,9 @@ internal static class InteractiveChecks
             var now = DateTimeOffset.UtcNow;
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, null, now, out var text) == "Ready" &&
                 text == "Привет, город!");
+            Check(InteractivePolicy.Check(registry.Current,
+                new RewardRule { RewardId = "reward-2", Action = InteractiveAction.CityAnnouncement },
+                redemption, null, now, out _) == "Ready");
             Check(InteractivePolicy.Check(registry.Current, null, redemption, null, now, out _) == "UnknownOrDisabledReward");
             Check(InteractivePolicy.Check(registry.Current, rule, redemption, now, now, out _) == "Cooldown");
             redemption.UserInput = " \t ";

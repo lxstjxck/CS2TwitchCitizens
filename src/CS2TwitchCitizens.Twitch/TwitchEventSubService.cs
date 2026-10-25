@@ -209,10 +209,15 @@ public sealed class TwitchEventSubService : IDisposable
                 if (_redemptions != null && EventSubProtocol.TryGetRedemption(envelope, _config.BroadcasterUserId,
                     DateTimeOffset.UtcNow, out var redemption))
                 {
+                    _log("[Interactive] source=EventSub result=received");
                     if (_rewardIcons.TryGetValue(redemption!.RewardId, out var icon)) redemption.RewardIconUrl = icon;
                     if (!_redemptions.TryEnqueue(redemption!))
-                        _log("[CS2TwitchCitizens] Channel Points queue full; redemption skipped");
+                        _log("[Interactive] stage=Enqueue result=QueueFull");
+                    else _log("[Interactive] stage=Enqueue result=accepted");
                 }
+                else if (envelope.Payload?.Subscription?.Type is EventSubProtocol.RedemptionType or
+                    EventSubProtocol.RedemptionUpdateType)
+                    _log("[Interactive] source=EventSub result=InvalidEvent");
                 else if (EventSubProtocol.TryGetCommand(envelope, _config.BroadcasterUserId, DateTimeOffset.UtcNow, out var command))
                 {
                     _queue.Enqueue(command!);

@@ -126,9 +126,9 @@ export function CommandEditor({ config, recovered, saveFailed = false, locale, i
     <div className={styles.commandTabs}>{(["join", "me", "find", "history"] as CommandName[]).map(name =>
       <Button variant="default" key={name} className={`${styles.control} ${styles.commandTab}`}
         selected={selected === name} data-selected={selected === name} onSelect={() => switchCommand(name)}>
-        <span className={styles.commandTabName}>!{name}</span><span className={styles.tabDot} data-enabled={config[name].enabled} /></Button>)}</div>
+        <span className={styles.commandTabName}>{`!${name}`}</span><span className={styles.tabDot} data-enabled={config[name].enabled} /></Button>)}</div>
     <div className={styles.commandTitle}>
-      <div className={styles.commandTitleText}><strong className={styles.commandName}>!{selected}</strong><p>{commandPurpose[selected][locale]}</p></div>
+      <div className={styles.commandTitleText}><strong className={styles.commandName}>{`!${selected}`}</strong><p>{commandPurpose[selected][locale]}</p></div>
       <span className={styles.commandState} data-enabled={option.enabled}>
         {option.enabled ? (ru ? "Включена" : "Enabled") : (ru ? "Выключена" : "Disabled")}</span>
     </div>

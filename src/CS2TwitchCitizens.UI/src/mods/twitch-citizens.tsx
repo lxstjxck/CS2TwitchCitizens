@@ -135,19 +135,31 @@ export const TwitchCitizensButton = () => {
   const locale = useValue(localeBinding);
   const snapshotJson = useValue(snapshotBinding);
   const snapshot = useMemo(() => parseSnapshot(snapshotJson), [snapshotJson]);
-  const interactiveJson = useValue(interactiveBinding);
-  const interactive = useMemo(() => parseInteractiveState(interactiveJson), [interactiveJson]);
 
   return <div className={styles.root} data-locale={locale}>
     <Button variant="default" className={`${styles.control} ${styles.openButton}`}
       onSelect={() => panelOpen.update(!open)}>
       {text(locale, "open")} {snapshot.viewers.length > 0 ? `(${snapshot.viewers.length})` : ""}
     </Button>
-    <InteractiveNotice event={interactive.active} locale={locale}
-      onDismiss={() => { if (interactive.active) dismissInteractive(interactive.active.id); }} onFind={id => focusCitizen(id)}
-      onShown={id => ackInteractive(id)} />
   </div>;
 };
+
+export const TwitchCitizensOverlay = () => {
+  const locale = useValue(localeBinding);
+  const interactiveJson = useValue(interactiveBinding);
+  const interactive = useMemo(() => parseInteractiveState(interactiveJson), [interactiveJson]);
+  if (!interactive.active) return null;
+  return <div className={styles.interactiveOverlay} data-locale={locale}>
+    <InteractiveNotice event={interactive.active} locale={locale}
+      onDismiss={() => dismissInteractive(interactive.active!.id)} onFind={id => focusCitizen(id)}
+      onShown={ackInteractive} />
+  </div>;
+};
+
+export const TwitchCitizensGameRoot = () => <>
+  <TwitchCitizensPanel />
+  <TwitchCitizensOverlay />
+</>;
 
 export const TwitchCitizensPanel = () => {
   const open = useValue(panelOpen);

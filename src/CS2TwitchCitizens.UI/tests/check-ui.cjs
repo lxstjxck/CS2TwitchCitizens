@@ -174,9 +174,9 @@ for (const file of fs.readdirSync(path.join(__dirname, "../src/mods"))) {
   const content = fs.readFileSync(path.join(__dirname, "../src/mods", file), "utf8");
   assert.doesNotMatch(content, /\bIntl\b/, `${file} must not depend on Intl`);
 }
-assert.match(css, /\.root\[data-locale="ru"\],\s*\.panel\[data-locale="ru"\]\s*\{\s*font-family:\s*"Noto Sans"/);
+assert.match(css, /\.root\[data-locale="ru"\],\s*\.panel\[data-locale="ru"\],\s*\.interactiveOverlay\[data-locale="ru"\]\s*\{\s*font-family:\s*"Noto Sans"/);
 assert.match(css, /\.panel\s*\{\s*font-family:\s*var\(--fontFamily\)/);
-assert.match(css, /\.root\[data-locale="ru"\] \.control,\s*\.panel\[data-locale="ru"\] \.control,\s*\.panel\[data-locale="ru"\] \.search\s*\{\s*font-family:\s*"Noto Sans"/);
+assert.match(css, /\.root\[data-locale="ru"\] \.control,\s*\.panel\[data-locale="ru"\] \.control,\s*\.interactiveOverlay\[data-locale="ru"\] \.control,\s*\.panel\[data-locale="ru"\] \.search\s*\{\s*font-family:\s*"Noto Sans"/);
 assert.match(css, /\.search\s*\{[^}]*font-family:\s*var\(--fontFamily\)/s);
 assert.doesNotMatch(css, /font-family:\s*inherit/);
 assert.doesNotMatch(css, /font-family:\s*(?:monospace|"Perfect DOS VGA 437")/);
@@ -192,7 +192,9 @@ assert.match(css, /\.control:focus,\s*\.control:global\(\.focused\)\s*\{[^}]*out
 assert.match(css, /\.control:disabled,\s*\.control\[data-disabled="true"\]/s);
 assert.match(css, /\.panel \.tab\[data-selected="true"\]/);
 assert.match(css, /\.search:focus-visible/);
-assert.doesNotMatch(css, /width:\s*100vw|height:\s*100vh|\bmin\(/);
+assert.match(css, /\.interactiveOverlay\s*\{[^}]*width:\s*100vw;\s*height:\s*100vh;[^}]*pointer-events:\s*none/s);
+assert.doesNotMatch(css.replace(/^\.interactiveOverlay\s*\{[^}]*\}/m, ""),
+  /width:\s*100vw|height:\s*100vh|\bmin\(/);
 assert.doesNotMatch(css, /(^|\n)\s*(html|body|\*)\s*\{/);
 assert.doesNotMatch(css, /(^|\n)\s*button\s*\{/);
 for (const [width, height] of [[1280, 720], [1920, 1080], [2560, 1440]]) {

@@ -1,8 +1,8 @@
 .root { position: relative; z-index: 30; font-family: var(--fontFamily); }
-.root[data-locale="ru"], .panel[data-locale="ru"] { font-family: "Noto Sans"; }
+.root[data-locale="ru"], .panel[data-locale="ru"], .interactiveOverlay[data-locale="ru"] { font-family: "Noto Sans"; }
 .root .openButton { white-space: nowrap; }
 
-.root, .panel {
+.root, .panel, .interactiveOverlay {
   .control {
     display: inline-flex;
     align-items: center;
@@ -36,6 +36,10 @@
     cursor: default;
   }
 }
+
+.interactiveOverlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  overflow: visible; pointer-events: none; z-index: 1000; font-family: var(--fontFamily); }
+.interactiveOverlay .interactiveNotice, .interactiveOverlay .cityAnnouncement { pointer-events: auto; }
 
 .panel {
   font-family: var(--fontFamily);
@@ -160,7 +164,8 @@
 .panel .tab:hover { background: #31556b; color: #f0f9fc; }
 .panel .tab[data-selected="true"] { border-color: #4aaac4; background: #286987; color: #fff; text-decoration: none; }
 .search { width: 100%; min-width: 0; box-sizing: border-box; padding: 9px 12px; border: 1px solid #335068; border-radius: 5px; background: #102334; color: #eef5fa; font-family: var(--fontFamily); font-size: 13px; }
-.root[data-locale="ru"] .control, .panel[data-locale="ru"] .control, .panel[data-locale="ru"] .search { font-family: "Noto Sans"; }
+.root[data-locale="ru"] .control, .panel[data-locale="ru"] .control,
+.interactiveOverlay[data-locale="ru"] .control, .panel[data-locale="ru"] .search { font-family: "Noto Sans"; }
 .search::placeholder { color: #a8bac6; }
 .search:focus-visible { border-color: #67c7d9; outline: 2px solid #67c7d9; outline-offset: 1px; background: #142c3e; }
 .search:focus { border-color: #67c7d9; outline: 2px solid #67c7d9; outline-offset: 1px; background: #142c3e; }
@@ -188,18 +193,21 @@
 
 .card, .settings { display: flex; flex-direction: column; gap: 11px; min-width: 0; box-sizing: border-box; padding: 12px; border-radius: 7px; background: rgba(43, 69, 91, .84); }
 .authButton { width: 100%; }
-.commandTabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.commandTabs { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .commandChoices { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .panel .commandChoices .control { min-height: 30px; padding: 4px 7px; }
 .commandNotice { display: flex; flex-direction: column; gap: 7px; padding: 9px; border: 1px solid #bc9957; border-radius: 5px; background: #493e30; font-size: 12px; }
 .commandPreview p { margin: 6px 0 0; }
 .commandEditor { display: flex; flex-direction: column; gap: 12px; min-width: 0; width: 100%; color: #eef5fa; }
 .commandHeader, .commandTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-width: 0; }
+.commandTitle { flex-wrap: wrap; }
 .commandHeader strong, .commandTitle strong { font-size: 14px; }
-.commandTitleText { flex: 1 1 auto; min-width: 80px; }
-.commandName { display: inline-block; min-width: 70px; white-space: nowrap; word-break: normal; overflow-wrap: normal; }
+.commandTitleText { flex: 1 1 150px; min-width: 0; }
+.commandName, .commandTabName { display: inline-block; white-space: nowrap; overflow-wrap: normal;
+  word-break: keep-all; flex-shrink: 0; }
 .commandTitle p { margin: 3px 0 0; color: #b6cbd7; font-size: 11px; }
 .replyStatus, .commandState { flex: 0 0 auto; padding: 3px 7px; border-radius: 12px; color: #e0b96d; background: rgba(95, 77, 42, .4); font-size: 10px; }
+.commandState { margin-left: auto; white-space: nowrap; }
 .replyStatus[data-enabled="true"], .commandState[data-enabled="true"] { color: #63e4bd; background: rgba(18, 107, 89, .35); }
 .commandSection { display: flex; flex-direction: column; gap: 8px; min-width: 0; border-bottom: 1px solid rgba(175, 205, 222, .13); }
 .commandSection:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -215,10 +223,10 @@
 .helpWrap { flex: 0 0 auto; display: inline-flex; align-items: center; }
 .panel .helpButton { width: 20px; min-width: 20px; min-height: 20px; height: 20px; padding: 0; border-radius: 50%; border-color: #7298aa; background: transparent; color: #c8dce5; font-size: 11px; }
 .helpText { display: block; width: 100%; box-sizing: border-box; padding: 7px 8px; border-left: 2px solid #5cc6d2; border-radius: 3px; background: #102a3a; color: #e6f3f8; font-size: 11px; line-height: 1.35; white-space: normal; overflow-wrap: break-word; }
-.panel .commandTab { flex: 1 1 0; min-width: 0; min-height: 30px; padding: 5px 4px; border-radius: 15px; background: #213b4f; white-space: nowrap; }
-.commandTabName { white-space: nowrap; overflow-wrap: normal; }
+.panel .commandTab { flex: 1 0 84px; min-width: 84px; min-height: 30px; padding: 5px 4px;
+  border-radius: 15px; background: #213b4f; white-space: nowrap; }
 .panel .commandTab[data-selected="true"] { border-color: #64c6d4; background: #28718a; color: #fff; }
-.tabDot { display: inline-block; width: 5px; height: 5px; margin-left: 5px; border-radius: 50%; background: #899ba5; }
+.tabDot { display: inline-block; flex: 0 0 5px; width: 5px; height: 5px; margin-left: 5px; border-radius: 50%; background: #899ba5; }
 .tabDot[data-enabled="true"] { background: #52dbb0; }
 .permissionChoices { display: flex; flex-direction: column; gap: 2px; }
 .panel .permissionButton { display: flex; justify-content: flex-start; align-items: center; width: 100%; min-height: 30px; padding: 3px 6px; border: 0; background: transparent; font-weight: 500; text-align: left; }
