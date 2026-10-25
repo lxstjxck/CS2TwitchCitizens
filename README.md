@@ -2,9 +2,9 @@
 
 ## Paradox Mods preparation
 
-Version 0.9.6 is a candidate update to the existing Paradox Mods listing (ModId 164740); repository scripts do not publish it automatically. [PUBLISHING.md](PUBLISHING.md) covers the Release build, staged package verification, and updates using the same ModId. [TESTING.md](TESTING.md) is the subscriber test checklist. A registered public Twitch Client ID and an original `Properties/Thumbnail.png` are required before publication. The local development build remains available through `scripts/build-official.ps1`.
+Version 0.9.7 is a candidate update to the existing Paradox Mods listing (ModId 164740); repository scripts do not publish it automatically. [PUBLISHING.md](PUBLISHING.md) covers the Release build, staged package verification, and updates using the same ModId. [TESTING.md](TESTING.md) is the subscriber test checklist. A registered public Twitch Client ID and an original `Properties/Thumbnail.png` are required before publication. The local development build remains available through `scripts/build-official.ps1`.
 
-CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.6 offers two fixed Channel Points rewards: **Message to the city** and **City announcement**. The streamer can create, enable or disable them and change their point cost from a compact Channel Points screen. Preview and history have separate sections. Messages appear at the upper right for eight seconds; announcements appear at the center for at most 30 seconds. Both can be dismissed early. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; both rewards were created successfully through live Twitch Helix in v0.9.5; in-game notification display still needs live verification.
+CS2 Code Mod that binds Twitch viewers to citizens through EventSub chat commands. Version 0.9.7 offers two fixed Channel Points rewards: **Message to the city** and **City announcement**. The streamer can create, enable or disable them and change their point cost from a compact Channel Points screen. Preview and history have separate sections. Messages appear at the upper right for eight seconds; announcements appear at the center for at most 30 seconds. Both can be dismissed early. The user verified `!join`, `!me`, `!find`, and `!history` replies in game on v0.8.2; both rewards were created successfully through live Twitch Helix in v0.9.5; in-game notification display still needs live verification.
 
 ## Channel Points setup
 
@@ -23,6 +23,28 @@ The project owner must [register one Twitch application](https://dev.twitch.tv/d
 Open **Twitch Citizens → Settings → Connect Twitch**. Copy the displayed code and choose **Open Twitch** to authorize in the system browser. After confirmation, the mod validates the user ID and starts EventSub for that account's own channel. Use **Reconnect** to retry EventSub and **Disconnect Twitch** to stop it and remove local credentials. Disconnect does not remove residents, bindings, or life history from city saves. Loading another city keeps the Twitch account connection and restores that city's bindings.
 
 The mod requests `user:read:chat`, `user:write:chat`, `channel:read:redemptions`, and `channel:manage:redemptions`. Existing read-only Channel Points tokens can still receive events but require reauthorization for reward management. The settings panel never receives access tokens, refresh tokens, device codes, or Authorization headers. It shows the one-time user code, login, connection status, chat sending permission, and separate Channel Points read/manage permissions.
+
+## Persistent diagnostic log (0.9.7 candidate)
+
+The mod now writes a low-overhead diagnostic log automatically at
+`%LOCALAPPDATA%\CS2TwitchCitizens\logs\CS2TwitchCitizens.log`.
+No environment variable is necessary. Entries include mod startup/shutdown,
+city save/restore, Twitch/EventSub reconnects, Channel Points and presentation
+results, command outcomes, and a one-minute, anonymous HEALTH heartbeat with
+queue depth, drops, viewer count, connectivity, and task count.
+The active file is limited to 5 MiB with three rotated archives
+(`CS2TwitchCitizens.1.log` to `.3.log`). The writer uses a bounded
+background queue; disk I/O failures disable only file logging, never gameplay.
+The game logger continues to operate.
+
+Sensitive key=value fields (viewer IDs, Twitch logins, tokens, message text,
+coordinates, etc.) and Bearer tokens are redacted in the file. The in-game
+`CS2TWITCHCITIZENS_DIAGNOSTICS=1` switch still controls high-volume
+performance metrics and citizen scans. Before sharing a log, review it for
+personal information: redaction is defensive and cannot guarantee that every
+future logging format contains no identifiers. These logs are not game saves;
+deleting them does not unbind viewers. Official packaging and in-game testing
+of this logging addition are still pending.
 
 ## Local data and migration
 

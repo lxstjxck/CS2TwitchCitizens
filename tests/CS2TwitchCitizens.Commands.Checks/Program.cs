@@ -382,6 +382,7 @@ Check(lives.TryGet("viewer-a", out var rebornAccount) && rebornAccount!.Current!
 Check(CitizenEligibilityPolicy.Check(nextLifeCandidate) == CitizenRejection.None); // Same selection policy after death.
 Console.WriteLine("PASS: Citizen eligibility policy, visitor/move/home/claim/death/position and no candidate");
 
+PersistentLogChecks.Run();
 StabilityChecks.Run();
 
 static void Check(bool condition)

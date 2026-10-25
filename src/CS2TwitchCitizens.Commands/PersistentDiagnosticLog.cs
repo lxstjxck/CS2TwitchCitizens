@@ -1,0 +1,149 @@
+using System;
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+
+namespace CS2TwitchCitizens.Commands;
+
+/// <summary>
+/// Always-on, bounded, best-effort diagnostic file writer. Never blocks the simulation
+/// on disk I/O and never changes city save state. Explicitly omit sensitive fields.
+/// </summary>
+public sealed class PersistentDiagnosticLog : IDisposable
+{
+    public const long DefaultMaxFileBytes = 5 * 1024 * 1024;
+    public const int DefaultArchiveCount = 3;
+    private const int MaximumEntryLength = 1400;
+
+    private static readonly Regex SensitiveFields = new Regex(
+        @"(?i)\b(access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization|device[_-]?code|usercode|viewer|viewerid|login|displayname|requestedname|name|original|userid|broadcaster|citizen|life|rewardid|redemptionid|message|text|body|position|camerabefore|cameraafter|cameraafterrequest|citizenposition|requestedtarget|home|address|household|workplace|currentbuilding)\s*=\s*.*?(?=\s+[A-Za-z_][A-Za-z0-9_]*\s*=|$)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex Bearer = new Regex(
+        @"(?i)\bBearer\s+\S+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private readonly string _path;
+    private readonly long _maxFileBytes;
+    private readonly int _archiveCount;
+    private readonly BlockingCollection<string> _pending;
+    private readonly Thread _writer;
+    private long _dropped;
+    private int _disposed;
+    private int _failed;
+
+    public PersistentDiagnosticLog(string directory, long maxFileBytes = DefaultMaxFileBytes,
+        int archiveCount = DefaultArchiveCount, int queueCapacity = 2048)
+    {
+        if (string.IsNullOrWhiteSpace(directory)) throw new ArgumentException("Log directory required.", nameof(directory));
+        if (maxFileBytes < 128) throw new ArgumentOutOfRangeException(nameof(maxFileBytes));
+        if (archiveCount < 0 || archiveCount > 10) throw new ArgumentOutOfRangeException(nameof(archiveCount));
+        if (queueCapacity < 1) throw new ArgumentOutOfRangeException(nameof(queueCapacity));
+        _path = Path.Combine(directory, "CS2TwitchCitizens.log");
+        _maxFileBytes = maxFileBytes;
+        _archiveCount = archiveCount;
+        _pending = new BlockingCollection<string>(new ConcurrentQueue<string>(), queueCapacity);
+        _writer = new Thread(WriteLoop) { IsBackground = true, Name = "CS2TwitchCitizens diagnostic log" };
+        _writer.Start();
+    }
+
+    public string FilePath => _path;
+    public long Dropped => Interlocked.Read(ref _dropped);
+    public bool Failed => Volatile.Read(ref _failed) != 0;
+
+    public bool TryWrite(string message)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || Failed || string.IsNullOrEmpty(message)) return false;
+        var safe = Sanitize(message);
+        if (safe.Length > MaximumEntryLength) safe = safe.Substring(0, MaximumEntryLength) + " [truncated]";
+        var line = DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture) + " [INFO] " + safe;
+        try
+        {
+            if (_pending.TryAdd(line)) return true;
+        }
+        catch (InvalidOperationException) { } // Concurrent Dispose completed the collection.
+        Interlocked.Increment(ref _dropped);
+        return false;
+    }
+
+    public static string Sanitize(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return string.Empty;
+        var singleLine = message.Replace('\r', ' ').Replace('\n', ' ').Replace('\t', ' ');
+        var withoutBearer = Bearer.Replace(singleLine, "Bearer [redacted]");
+        return SensitiveFields.Replace(withoutBearer, match => match.Groups[1].Value + "=[redacted]");
+    }
+
+    private void WriteLoop()
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(_path)!;
+            Directory.CreateDirectory(directory);
+            if (File.Exists(_path) && new FileInfo(_path).Length >= _maxFileBytes) RotateFiles();
+            var writer = OpenWriter();
+            try
+            {
+                var size = new FileInfo(_path).Length;
+                while (!_pending.IsCompleted)
+                {
+                    if (_pending.TryTake(out var line, 250))
+                    {
+                        var entryBytes = Encoding.UTF8.GetByteCount(line) + Encoding.UTF8.GetByteCount(Environment.NewLine);
+                        if (size > 0 && size + entryBytes > _maxFileBytes)
+                        {
+                            writer.Flush();
+                            writer.Dispose();
+                            RotateFiles();
+                            writer = OpenWriter();
+                            size = 0;
+                        }
+                        writer.WriteLine(line);
+                        size += entryBytes;
+                    }
+                    // Flush even when idle, so the last event survives unexpected game termination.
+                    writer.Flush();
+                }
+            }
+            finally { writer.Dispose(); }
+        }
+        catch (Exception)
+        {
+            // File permissions, full disks, and shutdown races must never crash the game.
+            Volatile.Write(ref _failed, 1);
+        }
+    }
+
+    private StreamWriter OpenWriter() =>
+        new StreamWriter(new FileStream(_path, FileMode.Append, FileAccess.Write,
+            FileShare.ReadWrite, 4096), new UTF8Encoding(false));
+
+    private string ArchivePath(int index) =>
+        Path.Combine(Path.GetDirectoryName(_path)!, "CS2TwitchCitizens." + index + ".log");
+
+    private void RotateFiles()
+    {
+        if (_archiveCount == 0)
+        {
+            if (File.Exists(_path)) File.Delete(_path);
+            return;
+        }
+        var oldest = ArchivePath(_archiveCount);
+        if (File.Exists(oldest)) File.Delete(oldest);
+        for (var i = _archiveCount - 1; i >= 1; i--)
+        {
+            var source = ArchivePath(i);
+            if (File.Exists(source)) File.Move(source, ArchivePath(i + 1));
+        }
+        if (File.Exists(_path)) File.Move(_path, ArchivePath(1));
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _pending.CompleteAdding();
+        // Bounded shutdown: never stall Cities: Skylines II indefinitely on file I/O.
+        if (_writer.Join(TimeSpan.FromSeconds(2))) _pending.Dispose();
+    }
+}

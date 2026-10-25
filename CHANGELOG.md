@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.9.7 — Stability hardening candidate (release package withheld)
+## 0.9.7 — Stability hardening candidate (in-game tests pending)
+
+- Added an always-on, sanitized, rotating local diagnostic log under `%LOCALAPPDATA%/CS2TwitchCitizens/logs/` (5 MiB active file + three archives) with bounded asynchronous writes and one-minute anonymous HEALTH heartbeat. Existing game logging remains; no city-save, Twitch credentials or reward IDs are changed. File logger and release packaging still need to be checked on the user's Windows installation.
 
 - Bounded Twitch command intake to 512 messages, rejected overflow, expired commands older than two minutes, and recorded queue counters. Kept command permissions and viewer cooldowns on the game thread.
 - Reset EventSub reconnect backoff after an established session and repaired socket ownership during Twitch-directed reconnect. Reduced normal command logging and made periodic citizen detail logging diagnostic-only.
