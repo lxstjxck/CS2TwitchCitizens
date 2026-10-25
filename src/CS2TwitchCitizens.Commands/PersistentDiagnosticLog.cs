@@ -19,7 +19,7 @@ public sealed class PersistentDiagnosticLog : IDisposable
     private const int MaximumEntryLength = 1400;
 
     private static readonly Regex SensitiveFields = new Regex(
-        @"(?i)\b(access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization|device[_-]?code|usercode|viewer|viewerid|login|displayname|requestedname|name|original|userid|broadcaster|citizen|life|rewardid|redemptionid|message|text|body|position|camerabefore|cameraafter|cameraafterrequest|citizenposition|requestedtarget|home|address|household|workplace|currentbuilding)\s*=\s*.*?(?=\s+[A-Za-z_][A-Za-z0-9_]*\s*=|$)",
+        @"(?i)\b(access[_-]?token|refresh[_-]?token|token|client[_-]?secret|password|authorization|device[_-]?code|usercode|viewer|viewerid|login|displayname|requestedname|name|original|userid|broadcaster|citizen|life|rewardid|redemptionid|message|text|body|position|camerabefore|cameraafter|cameraafterrequest|citizenposition|requestedtarget|home|address|household|workplace|currentbuilding)\s*=\s*.*?(?=\s+[A-Za-z_][A-Za-z0-9_]*\s*=|$)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex Bearer = new Regex(
         @"(?i)\bBearer\s+\S+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
